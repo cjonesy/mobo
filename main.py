@@ -46,6 +46,6 @@ async def on_message(message):
                 {"role": "user", "content": message.content}]
             )
 
-    await message.channel.send(response.choices[0].message.content)
+        await message.channel.send(response.choices[0].message.content)
 
 discord_client.run(token=os.environ.get('DISCORD_API_KEY'))
