@@ -1,6 +1,5 @@
 import os
 import discord
-import random
 import requests
 from openai import OpenAI
 
@@ -10,16 +9,15 @@ discord_client = discord.Client(intents=intents)
 
 def get_personality():
     response = requests.get(os.environ.get('PERSONALITY_URL'))
-
     if response.status_code == 200:
-        gist_content = response.text
-        return gist_content
+        return response.text
     else:
         raise Exception
 
-# Set the response chance (e.g., 20% chance to respond when not mentioned)
-RESPONSE_CHANCE_PERCENT = 30
+MODEL="gpt-3.5-turbo"
 PERSONALITY = get_personality()
+MAX_HISTORY_LENGTH = 30 # Limit the size of the conversation history
+conversation_histories = {}  # Dictionary to store conversation history
 
 @discord_client.event
 async def on_ready():
@@ -30,22 +28,28 @@ async def on_message(message):
     if message.author == discord_client.user:
         return
 
-    # Check if bot is mentioned in the message
-    if discord_client.user in message.mentions:
-        should_respond = True
-    else:
-        # Use the configurable chance for the bot to respond when not mentioned
-        should_respond = random.randint(1, 100) <= RESPONSE_CHANCE_PERCENT
+    channel_id = str(message.channel.id)
+    if channel_id not in conversation_histories:
+        conversation_histories[channel_id] = []
 
-    if should_respond:
-        async with message.channel.typing():  # Show typing indicator while processing
+    if discord_client.user.mentioned_in(message):
+        # Add user message to conversation history
+        conversation_histories[channel_id].append({"role": "user", "content": message.content})
+
+        async with message.channel.typing():
             response = open_ai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": PERSONALITY},
-                {"role": "user", "content": message.content}]
+                model=MODEL,
+                messages=[
+                    {"role": "system", "content": PERSONALITY}
+                ] + conversation_histories[channel_id]
             )
 
-        await message.channel.send(response.choices[0].message.content)
+        bot_response = response.choices[0].message.content
+        await message.reply(bot_response)
+
+        # Add bot response to conversation history
+        conversation_histories[channel_id].append({"role": "assistant", "content": bot_response})
+
+        conversation_histories[channel_id] = conversation_histories[channel_id][-MAX_HISTORY_LENGTH:]
 
 discord_client.run(token=os.environ.get('DISCORD_API_KEY'))
