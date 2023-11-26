@@ -14,12 +14,22 @@ def load_personality():
     else:
         raise Exception
 
-def admin(message):
-    response = ""
-    parts = message.content.split(' ', 2)
 
-    admin_command = parts[1] if len(parts) > 1 else None
-    text = parts[2] if len(parts) > 2 else None
+MODEL="gpt-3.5-turbo"
+PERSONALITY = load_personality()
+MAX_HISTORY_LENGTH = 30 # Limit the size of the conversation history
+conversation_histories = {}  # Dictionary to store conversation history
+
+
+def admin(message):
+    global PERSONALITY
+    global MODEL
+
+    response = ""
+    parts = message.content.split(' ', 3)
+
+    admin_command = parts[2] if len(parts) > 2 else None
+    text = parts[3] if len(parts) > 3 else None
 
     if admin_command == "help":
         response = "\n".join([
@@ -39,7 +49,7 @@ def admin(message):
         else:
             response = "Error: No personality text provided"
     elif admin_command == "reset-personality":
-        load_personality()
+        PERSONALITY = load_personality()
         response = "Personality reset."
     elif admin_command == "get-model":
         response = f"`{MODEL}`"
@@ -49,12 +59,7 @@ def admin(message):
             response = f"Model set to {text}."
         else:
             response = "Error: No model text provided"
-    message.reply(response)
-
-MODEL="gpt-3.5-turbo"
-PERSONALITY = load_personality()
-MAX_HISTORY_LENGTH = 30 # Limit the size of the conversation history
-conversation_histories = {}  # Dictionary to store conversation history
+    return response
 
 @discord_client.event
 async def on_ready():
@@ -65,8 +70,10 @@ async def on_message(message):
     if message.author == discord_client.user:
         return
 
-    if message.content.startswith("!admin "):
-        admin(message)
+    if message.content.split(' ', 2)[1] == '!admin':
+        async with message.channel.typing():
+            response = admin(message)
+        await message.reply(response)
         return
 
     channel_id = str(message.channel.id)
