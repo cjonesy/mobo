@@ -7,15 +7,52 @@ open_ai_client = OpenAI()
 intents = discord.Intents.all()
 discord_client = discord.Client(intents=intents)
 
-def get_personality():
+def load_personality():
     response = requests.get(os.environ.get('PERSONALITY_URL'))
     if response.status_code == 200:
         return response.text
     else:
         raise Exception
 
+def admin(message):
+    response = ""
+    parts = message.content.split(' ', 2)
+
+    admin_command = parts[1] if len(parts) > 1 else None
+    text = parts[2] if len(parts) > 2 else None
+
+    if admin_command == "help":
+        response = "\n".join([
+            "Available commands:",
+            "`get-personality` - Returns the current personality text",
+            "`set-personality <text>` - Changes the bot's personality text",
+            "`reset-personality` - Changes the bot's personality back to the default",
+            "`get-model` - Returns the current model",
+            "`set-model <text>` - Chages the bot's model",
+        ])
+    elif admin_command == "get-personality":
+        response = f"```\n{PERSONALITY}\n```"
+    elif admin_command == "set-personality":
+        if text:
+            PERSONALITY = text
+            response = "Personality set."
+        else:
+            response = "Error: No personality text provided"
+    elif admin_command == "reset-personality":
+        load_personality()
+        response = "Personality reset."
+    elif admin_command == "get-model":
+        response = f"`{MODEL}`"
+    elif admin_command == "set-model":
+        if text:
+            MODEL = text
+            response = f"Model set to {text}."
+        else:
+            response = "Error: No model text provided"
+    message.reply(response)
+
 MODEL="gpt-3.5-turbo"
-PERSONALITY = get_personality()
+PERSONALITY = load_personality()
 MAX_HISTORY_LENGTH = 30 # Limit the size of the conversation history
 conversation_histories = {}  # Dictionary to store conversation history
 
@@ -26,6 +63,10 @@ async def on_ready():
 @discord_client.event
 async def on_message(message):
     if message.author == discord_client.user:
+        return
+
+    if message.content.startswith("!admin "):
+        admin(message)
         return
 
     channel_id = str(message.channel.id)
