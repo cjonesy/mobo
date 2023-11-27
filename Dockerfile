@@ -1,9 +1,9 @@
 FROM python:3.8-slim
 
-WORKDIR /usr/src/app
+WORKDIR /usr/src/mobo
 
 COPY . .
+RUN pip install --upgrade pip \
+&&  pip install --no-cache-dir .
 
-RUN pip install --no-cache-dir -r requirements.txt
-
-CMD ["python", "./main.py"]
+CMD ["python", "-m", "bot"]
