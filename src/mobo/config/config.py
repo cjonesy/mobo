@@ -35,7 +35,7 @@ class MoboConfig:
 
     @classmethod
     def from_env(cls):
-        model = os.environ.get("MOBO_MODEL", "gpt-3.5-turbo")
+        model = os.environ.get("MOBO_MODEL", "gpt-4")
         max_history_length = os.environ.get("MOBO_MAX_HISTORY_LENGTH", 30)
         max_bot_responses = os.environ.get("MOBO_MAX_BOT_RESPONSES", 5)
         personality_url = os.environ.get("MOBO_PERSONALITY_URL")
