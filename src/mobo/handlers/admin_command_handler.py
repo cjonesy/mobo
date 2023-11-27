@@ -14,7 +14,7 @@ class AdminCommandHandler(BaseHandler):
             "get-personality": self.handle_get_personality,
             "set-personality": self.handle_set_personality,
             "set-personality-url": self.handle_set_personality_url,
-            "reset-config": self.handle_reset_personality,
+            "reset-config": self.handle_reset_config,
             "get-model": self.handle_get_model,
             "set-model": self.handle_set_model,
         }
@@ -28,7 +28,8 @@ class AdminCommandHandler(BaseHandler):
             "Available commands:",
             "`get-personality` - Returns the current personality text",
             "`set-personality <text>` - Changes the bot's personality text",
-            "`reset-personality` - Resets the bot's personality to default",
+            "`set-personality-url <text>` - Changes the bot's personality url and loads it",
+            "`reset-config` - Resets the bot's personality to default",
             "`get-model` - Returns the current model",
             "`set-model <text>` - Changes the bot's model",
         ])
