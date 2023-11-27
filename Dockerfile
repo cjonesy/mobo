@@ -6,4 +6,4 @@ COPY . .
 RUN pip install --upgrade pip \
 &&  pip install --no-cache-dir .
 
-CMD ["python", "-m", "bot"]
+CMD ["python", "-m", "mobo"]
