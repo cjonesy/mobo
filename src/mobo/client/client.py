@@ -19,15 +19,13 @@ class Mobo(discord.Client):
         if message.author == self.user:
             return
 
-        if message.content.split(' ', 2)[1] == '!admin':
-            async with message.channel.typing():
-                await self.handlers["admin"].handle(message, self)
-            return
-
         if self.user.mentioned_in(message):
             async with message.channel.typing():
-                await self.handlers["chat"].handle(message, self)
-            return
+                if message.content.split(' ', 2)[1] == '!admin':
+                    await self.handlers["admin"].handle(message, self)
+                else:
+                    await self.handlers["chat"].handle(message, self)
+                return
 
     def run(self):
         super().run(token=self.config.discord_token)
