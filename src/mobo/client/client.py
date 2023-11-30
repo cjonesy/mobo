@@ -22,9 +22,8 @@ class Mobo(discord.Client):
 
         if self.user.mentioned_in(message):
             async with message.channel.typing():
-                if len(message.content.split(' ', 2)) >= 2:
-                    if message.content.split(' ', 2)[1] == '!admin':
-                        await self.handlers["admin"].handle(message, self)
+                if message.content.split(' ', 2)[1] == '!admin':
+                    await self.handlers["admin"].handle(message, self)
                 else:
                     await self.handlers["chat"].handle(message, self)
                 return
