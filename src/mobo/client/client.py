@@ -3,6 +3,7 @@ import discord
 from ..handlers import AdminCommandHandler, ChatMessageHandler
 from ..config import MoboConfig
 
+
 class Mobo(discord.Client):
     def __init__(self, config):
         super().__init__(intents=discord.Intents.all())
@@ -21,8 +22,9 @@ class Mobo(discord.Client):
 
         if self.user.mentioned_in(message):
             async with message.channel.typing():
-                if message.author.guild_permissions.administrator:
-                    await self.handlers["admin"].handle(message, self)
+                if len(message.content.split(' ', 2)) >= 2:
+                    if message.content.split(' ', 2)[1] == '!admin':
+                        await self.handlers["admin"].handle(message, self)
                 else:
                     await self.handlers["chat"].handle(message, self)
                 return
