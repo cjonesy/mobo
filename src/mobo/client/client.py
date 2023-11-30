@@ -1,8 +1,9 @@
+import re
 import discord
+import logging
 
 from ..handlers import AdminCommandHandler, ChatMessageHandler
-from ..config import MoboConfig
-
+_log = logging.getLogger(__name__)
 
 class Mobo(discord.Client):
     def __init__(self, config):
@@ -22,7 +23,7 @@ class Mobo(discord.Client):
 
         if self.user.mentioned_in(message):
             async with message.channel.typing():
-                if message.content.split(' ', 2)[1] == '!admin':
+                if '!admin' in message.content:
                     await self.handlers["admin"].handle(message, self)
                 else:
                     await self.handlers["chat"].handle(message, self)
