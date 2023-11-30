@@ -3,27 +3,41 @@ from ..config import MoboConfig
 
 class AdminCommandHandler(BaseHandler):
 
+    @classmethod
+    def parse_admin_command(cls, text):
+        parts = text.split(' ', 3)
+
+        if len(parts) < 2:
+            return None
+
+        if parts[1] != "!admin":
+            return None
+
+        return {
+            'command': parts[2] if len(parts) > 2 else None,
+            'text': parts[3] if len(parts) > 3 else None
+        }
+
     async def handle(self, message, bot):
-        if message.author.guild_permissions.administrator:
-            response = ""
-            parts = message.content.split(' ', 3)
-            admin_command = parts[2] if len(parts) > 2 else None
-            text = parts[3] if len(parts) > 3 else None
+        cmd = self.parse_admin_command(message.content)
+        if cmd is None:
+            return
 
-            command_handlers = {
-                "help": self.handle_help,
-                "get-personality": self.handle_get_personality,
-                "set-personality": self.handle_set_personality,
-                "set-personality-url": self.handle_set_personality_url,
-                "reset-config": self.handle_reset_config,
-                "get-model": self.handle_get_model,
-                "set-model": self.handle_set_model,
-            }
+        response = ""
 
-            handler = command_handlers.get(admin_command, self.handle_unknown_command)
-            response = await handler(bot, text)
-        else:
-            response = "https://media.giphy.com/media/3eKdC7REvgOt2/giphy.gif"
+        command_handlers = {
+            "help": self.handle_help,
+            "get-personality": self.handle_get_personality,
+            "set-personality": self.handle_set_personality,
+            "set-personality-url": self.handle_set_personality_url,
+            "reset-config": self.handle_reset_config,
+            "get-model": self.handle_get_model,
+            "set-model": self.handle_set_model,
+        }
+
+        handler = command_handlers.get(cmd['command'], self.handle_unknown_command)
+        response = await handler(bot, cmd['text'])
+
         await message.reply(response)
 
     async def handle_help(self, bot, text):

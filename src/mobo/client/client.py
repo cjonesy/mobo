@@ -21,7 +21,7 @@ class Mobo(discord.Client):
 
         if self.user.mentioned_in(message):
             async with message.channel.typing():
-                if message.content.split(' ', 2)[1] == '!admin':
+                if message.author.guild_permissions.administrator:
                     await self.handlers["admin"].handle(message, self)
                 else:
                     await self.handlers["chat"].handle(message, self)

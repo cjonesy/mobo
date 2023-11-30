@@ -15,8 +15,8 @@ class MoboConfig:
         max_bot_responses=5,
     ):
         self.model = model
-        self.max_history_length = max_history_length
-        self.max_bot_responses = max_bot_responses
+        self.max_history_length = int(max_history_length)
+        self.max_bot_responses = int(max_bot_responses)
         self.discord_token = discord_token
         self.open_ai_key = open_ai_key
         self.personality_url = personality_url
