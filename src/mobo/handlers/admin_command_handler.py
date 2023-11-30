@@ -2,6 +2,8 @@ from .base_handler import BaseHandler
 from ..config import MoboConfig
 
 class AdminCommandHandler(BaseHandler):
+    def __init__(self, config) -> None:
+        super().__init__(config)
 
     async def handle(self, message, bot):
         if message.author.guild_permissions.administrator:

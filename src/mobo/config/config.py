@@ -13,6 +13,7 @@ class MoboConfig:
         personality_url=None,
         max_history_length=30,
         max_bot_responses=5,
+        log_level="INFO",
     ):
         self.model = model
         self.max_history_length = int(max_history_length)
@@ -20,6 +21,7 @@ class MoboConfig:
         self.discord_token = discord_token
         self.open_ai_key = open_ai_key
         self.personality_url = personality_url
+        self.log_level = log_level
 
         if personality:
           self.personality = personality
@@ -41,6 +43,7 @@ class MoboConfig:
         personality_url = os.environ.get("MOBO_PERSONALITY_URL")
         discord_token = os.environ.get("DISCORD_API_KEY")
         open_ai_key = os.environ.get("OPENAI_API_KEY")
+        log_level = os.environ.get("MOBO_LOG_LEVEL")
 
         return cls(
             model=model,
@@ -49,4 +52,5 @@ class MoboConfig:
             personality_url=personality_url,
             discord_token=discord_token,
             open_ai_key=open_ai_key,
+            log_level=log_level,
         )

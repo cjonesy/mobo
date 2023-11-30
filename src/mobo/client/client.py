@@ -1,3 +1,4 @@
+import logging
 import discord
 
 from ..handlers import AdminCommandHandler, ChatMessageHandler
@@ -6,9 +7,12 @@ class Mobo(discord.Client):
     def __init__(self, config):
         super().__init__(intents=discord.Intents.all())
         self.config = config
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.logger.setLevel(logging.getLevelName(self.config.log_level))
+        self.logger.info("Logger for %s initialized", self.__class__.__name__)
         self.handlers = {
-            "admin": AdminCommandHandler(),
-            "chat": ChatMessageHandler(),
+            "admin": AdminCommandHandler(self.config),
+            "chat": ChatMessageHandler(self.config),
         }
 
     async def on_ready(self):

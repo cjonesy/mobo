@@ -2,8 +2,6 @@ import logging
 from openai import OpenAI
 from .base_handler import BaseHandler
 
-_log = logging.getLogger(__name__)
-_log.setLevel(logging.DEBUG)
 
 class Message:
     def __init__(self, role, content, name=None, is_bot=False):
@@ -29,12 +27,6 @@ class ChannelHistoryManager:
             self.history[channel_id] = []
         self.history[channel_id].append(message)
 
-        _log.info(
-            "add_message - channel: %s, new size: %s",
-            channel_id,
-            len(self.history[channel_id]),
-        )
-
     def get_messages(self, channel_id):
         return self.history.get(channel_id, [])
 
@@ -45,11 +37,11 @@ class ChannelHistoryManager:
         if channel_id in self.history:
             self.history[channel_id] = self.history[channel_id][-number_of_messages:]
 
-        _log.info(
-            "prune_messages - channel: %s, new size: %s",
-            channel_id,
-            len(self.history[channel_id]),
-        )
+    def message_count(self, channel_id):
+        response_count = 0
+        if channel_id in self.history:
+            response_count = len(self.history[channel_id])
+        return response_count
 
     def bot_responses(self, channel_id):
         """
@@ -60,30 +52,35 @@ class ChannelHistoryManager:
             response_count = sum(
                 1 for message in self.history[channel_id] if message.is_bot
             )
-
-        _log.info(
-            "bot_responses - channel: %s, responses: %s", channel_id, response_count
-        )
         return response_count
 
 
 class ChatMessageHandler(BaseHandler):
-    def __init__(self) -> None:
+    def __init__(self, config) -> None:
+        super().__init__(config)
         self.open_ai_client = OpenAI()
         self.history = ChannelHistoryManager()
 
     async def handle(self, message, bot):
         channel_id = str(message.channel.id)
 
-        self.history.add_message(
+        self.logger.info(
+            "bot_responses - channel: %s, count: %s",
             channel_id,
-            Message(role="user", content=message.content, is_bot=message.author.bot),
+            self.history.bot_responses(channel_id=channel_id),
         )
 
         if not message.author.bot or (
             message.author.bot
-            and self.history.bot_responses(channel_id) < bot.config.max_bot_responses
+            and self.history.bot_responses(channel_id) <= bot.config.max_bot_responses
         ):
+            self.history.add_message(
+                channel_id,
+                Message(
+                    role="user", content=message.content, is_bot=message.author.bot
+                ),
+            )
+
             completion = self.open_ai_client.chat.completions.create(
                 model=bot.config.model,
                 messages=[{"role": "system", "content": bot.config.personality}]
@@ -99,3 +96,8 @@ class ChatMessageHandler(BaseHandler):
             )
 
         self.history.prune_messages(channel_id, bot.config.max_history_length)
+        self.logger.info(
+            "message_count - channel: %s, count: %s",
+            channel_id,
+            self.history.message_count(channel_id=channel_id),
+        )
