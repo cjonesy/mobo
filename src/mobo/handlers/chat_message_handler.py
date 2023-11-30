@@ -1,5 +1,8 @@
+import logging
 from openai import OpenAI
 from .base_handler import BaseHandler
+
+_log = logging.getLogger(__name__)
 
 
 class Message:
@@ -16,6 +19,7 @@ class Message:
             if getattr(self, attr) is not None
         }
 
+
 class ChannelHistoryManager:
     def __init__(self):
         self.history = {}
@@ -24,6 +28,12 @@ class ChannelHistoryManager:
         if channel_id not in self.history:
             self.history[channel_id] = []
         self.history[channel_id].append(message)
+
+        _log.info(
+            "add_message - channel: %s, new size: %s",
+            channel_id,
+            len(self.history[channel_id]),
+        )
 
     def get_messages(self, channel_id):
         return self.history.get(channel_id, [])
@@ -35,14 +45,26 @@ class ChannelHistoryManager:
         if channel_id in self.history:
             self.history[channel_id] = self.history[channel_id][-number_of_messages:]
 
+        _log.info(
+            "prune_messages - channel: %s, new size: %s",
+            channel_id,
+            len(self.history[channel_id]),
+        )
+
     def bot_responses(self, channel_id):
         """
         Counts the number of bot messages in the history for a given channel_id.
         """
-        if channel_id not in self.history:
-            return 0
+        response_count = 0
+        if channel_id in self.history:
+            response_count = sum(
+                1 for message in self.history[channel_id] if message.is_bot
+            )
 
-        return sum(1 for message in self.history[channel_id] if message.is_bot)
+        _log.info(
+            "bot_responses - channel: %s, responses: %s", channel_id, response_count
+        )
+        return response_count
 
 
 class ChatMessageHandler(BaseHandler):
@@ -77,4 +99,3 @@ class ChatMessageHandler(BaseHandler):
             )
 
         self.history.prune_messages(channel_id, bot.config.max_history_length)
-

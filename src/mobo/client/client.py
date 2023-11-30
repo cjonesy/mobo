@@ -1,9 +1,6 @@
-import re
 import discord
-import logging
 
 from ..handlers import AdminCommandHandler, ChatMessageHandler
-_log = logging.getLogger(__name__)
 
 class Mobo(discord.Client):
     def __init__(self, config):
