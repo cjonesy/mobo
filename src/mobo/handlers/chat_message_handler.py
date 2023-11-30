@@ -1,7 +1,10 @@
 import logging
+from datetime import datetime
 from openai import OpenAI
 from .base_handler import BaseHandler
 
+_log = logging.getLogger()
+_log.setLevel(logging.INFO)
 
 class Message:
     def __init__(self, role, content, name=None, is_bot=False):
@@ -56,19 +59,13 @@ class ChannelHistoryManager:
 
 
 class ChatMessageHandler(BaseHandler):
-    def __init__(self, config) -> None:
-        super().__init__(config)
+    def __init__(self) -> None:
+        super().__init__()
         self.open_ai_client = OpenAI()
         self.history = ChannelHistoryManager()
 
     async def handle(self, message, bot):
         channel_id = str(message.channel.id)
-
-        self.logger.info(
-            "bot_responses - channel: %s, count: %s",
-            channel_id,
-            self.history.bot_responses(channel_id=channel_id),
-        )
 
         if not message.author.bot or (
             message.author.bot
@@ -96,8 +93,3 @@ class ChatMessageHandler(BaseHandler):
             )
 
         self.history.prune_messages(channel_id, bot.config.max_history_length)
-        self.logger.info(
-            "message_count - channel: %s, count: %s",
-            channel_id,
-            self.history.message_count(channel_id=channel_id),
-        )

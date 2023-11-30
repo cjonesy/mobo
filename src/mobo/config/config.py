@@ -43,7 +43,7 @@ class MoboConfig:
         personality_url = os.environ.get("MOBO_PERSONALITY_URL")
         discord_token = os.environ.get("DISCORD_API_KEY")
         open_ai_key = os.environ.get("OPENAI_API_KEY")
-        log_level = os.environ.get("MOBO_LOG_LEVEL")
+        log_level = os.environ.get("MOBO_LOG_LEVEL", "INFO")
 
         return cls(
             model=model,
