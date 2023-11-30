@@ -3,7 +3,7 @@ from openai import OpenAI
 from .base_handler import BaseHandler
 
 _log = logging.getLogger(__name__)
-
+_log.setLevel(logging.DEBUG)
 
 class Message:
     def __init__(self, role, content, name=None, is_bot=False):
