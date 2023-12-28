@@ -27,4 +27,4 @@ class Mobo(discord.Client):
                 return
 
     def run(self):
-        super().run(token=self.config.discord_token)
+        super().run(token=self.config.discord_token, log_handler=None)
