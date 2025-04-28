@@ -82,6 +82,8 @@ class ChatMessageHandler(BaseHandler):
                 model=bot.config.model,
                 messages=[{"role": "system", "content": bot.config.personality}]
                 + self.history.get_messages_dict(channel_id),
+                temperature=bot.config.temperature,
+                top_p=bot.config.top_p,
             )
 
             bot_response = completion.choices[0].message.content
