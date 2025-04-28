@@ -32,7 +32,7 @@ class MoboConfig:
         else:
           self.personality = self.personality_from_url()
 
-        if self.temperature and self.top_p:
+        if self.temperature is not None and self.top_p is not None:
             raise ValueError("Both temperature and top_p cannot be set")
 
     def personality_from_url(self):
