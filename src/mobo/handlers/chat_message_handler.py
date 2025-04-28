@@ -6,6 +6,8 @@ from .base_handler import BaseHandler
 _log = logging.getLogger()
 _log.setLevel(logging.INFO)
 
+MAX_DISCORD_LENGTH = 2000
+
 
 class Message:
     def __init__(self, role, content, name=None, is_bot=False):
@@ -87,7 +89,21 @@ class ChatMessageHandler(BaseHandler):
             )
 
             bot_response = completion.choices[0].message.content
-            await message.reply(bot_response)
+
+            if len(bot_response) <= MAX_DISCORD_LENGTH:
+                await message.reply(bot_response)
+            else:
+                chunks = [
+                    bot_response[i : i + MAX_DISCORD_LENGTH]
+                    for i in range(0, len(bot_response), MAX_DISCORD_LENGTH)
+                ]
+
+                # Send the first chunk as a reply to the original message
+                first_message = await message.reply(chunks[0])
+
+                # Send remaining chunks as follow-ups
+                for chunk in chunks[1:]:
+                    await first_message.channel.send(chunk)
 
             self.history.add_message(
                 channel_id,

@@ -11,7 +11,7 @@ class MoboConfig:
         personality=None,
         personality_url=None,
         temperature=0.5,
-        max_history_length=30,
+        max_history_length=300,
         max_bot_responses=5,
         log_level="INFO",
     ):
@@ -39,7 +39,7 @@ class MoboConfig:
     @classmethod
     def from_env(cls):
         model = os.environ.get("MOBO_MODEL", "gpt-4")
-        max_history_length = os.environ.get("MOBO_MAX_HISTORY_LENGTH", 30)
+        max_history_length = os.environ.get("MOBO_MAX_HISTORY_LENGTH", 300)
         max_bot_responses = os.environ.get("MOBO_MAX_BOT_RESPONSES", 5)
         personality_url = os.environ.get("MOBO_PERSONALITY_URL")
         discord_token = os.environ.get("DISCORD_API_KEY")
