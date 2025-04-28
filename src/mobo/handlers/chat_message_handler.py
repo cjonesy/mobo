@@ -6,6 +6,7 @@ from .base_handler import BaseHandler
 _log = logging.getLogger()
 _log.setLevel(logging.INFO)
 
+
 class Message:
     def __init__(self, role, content, name=None, is_bot=False):
         self.role = role
@@ -82,6 +83,7 @@ class ChatMessageHandler(BaseHandler):
                 model=bot.config.model,
                 messages=[{"role": "system", "content": bot.config.personality}]
                 + self.history.get_messages_dict(channel_id),
+                temperature=bot.config.temperature,
             )
 
             bot_response = completion.choices[0].message.content
