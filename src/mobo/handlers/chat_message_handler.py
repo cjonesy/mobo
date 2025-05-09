@@ -70,10 +70,15 @@ class ChatMessageHandler(BaseHandler):
     def _get_channel_members(self, channel):
         """Get a formatted list of members in the channel for the AI to reference."""
         members = []
+        member_info = []
         for member in channel.members:
             if not member.bot:  # Exclude bots from the list
-                members.append(f"@{member.display_name}")
-        return members
+                # Store both the mention format and display name
+                member_info.append(
+                    {"name": member.display_name, "mention": f"<@{member.id}>"}
+                )
+                members.append(f"{member.display_name}")
+        return members, member_info
 
     async def handle(self, message, bot):
         channel_id = str(message.channel.id)
@@ -90,12 +95,22 @@ class ChatMessageHandler(BaseHandler):
             )
 
             # Get channel members
-            channel_members = self._get_channel_members(message.channel)
+            channel_members, member_info = self._get_channel_members(message.channel)
 
             # Create system message with personality and channel members info
             system_message = bot.config.personality
             if channel_members:
-                system_message += f"\n\nUsers in this Discord channel: {', '.join(channel_members)}. You can mention any of them by using their name with an @ symbol."
+                system_message += (
+                    "\n\nUsers in this Discord channel: "
+                    + ", ".join(channel_members)
+                    + "."
+                )
+                system_message += "\n\nTo mention a user, use the exact format below for the corresponding user:"
+                for member in member_info:
+                    system_message += f"\n- To mention {member['name']}, use exactly: {member['mention']}"
+                system_message += (
+                    "\n\nDo not use @username format as it won't properly tag users."
+                )
 
             completion = self.open_ai_client.chat.completions.create(
                 model=bot.config.model,
