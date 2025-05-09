@@ -67,6 +67,14 @@ class ChatMessageHandler(BaseHandler):
         self.open_ai_client = OpenAI()
         self.history = ChannelHistoryManager()
 
+    def _get_channel_members(self, channel):
+        """Get a formatted list of members in the channel for the AI to reference."""
+        members = []
+        for member in channel.members:
+            if not member.bot:  # Exclude bots from the list
+                members.append(f"@{member.display_name}")
+        return members
+
     async def handle(self, message, bot):
         channel_id = str(message.channel.id)
 
@@ -81,9 +89,17 @@ class ChatMessageHandler(BaseHandler):
                 ),
             )
 
+            # Get channel members
+            channel_members = self._get_channel_members(message.channel)
+
+            # Create system message with personality and channel members info
+            system_message = bot.config.personality
+            if channel_members:
+                system_message += f"\n\nUsers in this Discord channel: {', '.join(channel_members)}. You can mention any of them by using their name with an @ symbol."
+
             completion = self.open_ai_client.chat.completions.create(
                 model=bot.config.model,
-                messages=[{"role": "system", "content": bot.config.personality}]
+                messages=[{"role": "system", "content": system_message}]
                 + self.history.get_messages_dict(channel_id),
                 temperature=bot.config.temperature,
             )
