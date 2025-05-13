@@ -112,18 +112,33 @@ class ChatMessageHandler(BaseHandler):
             system_message += "\n}"
             system_message += "\n```"
             system_message += "\nIf you don't want to generate an image, simply omit the 'image_prompt' field completely."
-            system_message += "\nThere is no need to generate an image for every response, only do so when it makes sense, or when you think it might be funny."
+            system_message += "\n\nConsider generating an image when:"
+            system_message += (
+                "\n- The user explicitly asks for an image or visualization"
+            )
+            system_message += "\n- The user is discussing a visual concept that would benefit from an illustration"
+            system_message += (
+                "\n- You want to enhance your explanation with a visual aid"
+            )
             system_message += "\n\nThe user's latest message is: '{}'".format(
                 mentions_removed
             )
 
-        # Generate text response from LLM
-        completion = self.open_ai_client.chat.completions.create(
-            model=bot.config.model,
-            messages=[{"role": "system", "content": system_message}]
+        # Prepare API call parameters
+        api_params = {
+            "model": bot.config.model,
+            "messages": [{"role": "system", "content": system_message}]
             + self.history.get_messages_dict(channel_id),
-            temperature=bot.config.temperature,
-        )
+        }
+
+        # Add either temperature or top_p based on which is set
+        if bot.config.temperature is not None:
+            api_params["temperature"] = bot.config.temperature
+        elif bot.config.top_p is not None:
+            api_params["top_p"] = bot.config.top_p
+
+        # Generate text response from LLM
+        completion = self.open_ai_client.chat.completions.create(**api_params)
 
         bot_text_response = completion.choices[0].message.content
 

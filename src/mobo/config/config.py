@@ -13,6 +13,7 @@ class MoboConfig:
         personality=None,
         personality_url=None,
         temperature=0.5,
+        top_p=None,
         max_history_length=300,
         max_bot_responses=5,
         max_daily_images=10,
@@ -27,8 +28,15 @@ class MoboConfig:
         self.discord_token = discord_token
         self.open_ai_key = open_ai_key
         self.personality_url = personality_url
-        self.temperature = float(temperature)
         self.log_level = log_level
+
+        # Set randomness parameters (only one should be active)
+        if top_p is not None:
+            self.top_p = float(top_p)
+            self.temperature = None
+        else:
+            self.temperature = float(temperature)
+            self.top_p = None
 
         # Image generation configuration
         self.enable_image_generation = bool(enable_image_generation)
@@ -73,6 +81,16 @@ class MoboConfig:
         self.daily_image_count += 1
         return self.daily_image_count
 
+    def set_temperature(self, temperature):
+        """Set temperature and clear top_p"""
+        self.temperature = float(temperature)
+        self.top_p = None
+
+    def set_top_p(self, top_p):
+        """Set top_p and clear temperature"""
+        self.top_p = float(top_p)
+        self.temperature = None
+
     @classmethod
     def from_env(cls):
         model = os.environ.get("MOBO_MODEL", "gpt-4")
@@ -82,6 +100,7 @@ class MoboConfig:
         discord_token = os.environ.get("DISCORD_API_KEY")
         open_ai_key = os.environ.get("OPENAI_API_KEY")
         temperature = os.environ.get("MOBO_TEMPERATURE", 0.5)
+        top_p = os.environ.get("MOBO_TOP_P", None)
         log_level = os.environ.get("MOBO_LOG_LEVEL", "INFO")
 
         # Image generation config from environment variables
@@ -97,8 +116,9 @@ class MoboConfig:
             personality_url=personality_url,
             discord_token=discord_token,
             open_ai_key=open_ai_key,
-            log_level=log_level,
             temperature=temperature,
+            top_p=top_p,
+            log_level=log_level,
             enable_image_generation=enable_image_generation,
             max_daily_images=max_daily_images,
             image_model=image_model,
