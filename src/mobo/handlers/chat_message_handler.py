@@ -1,8 +1,11 @@
 import random
 import logging
+import tempfile
+import os
 from datetime import datetime
 from openai import OpenAI
 from .base_handler import BaseHandler
+import discord
 
 _log = logging.getLogger()
 _log.setLevel(logging.INFO)
@@ -23,6 +26,12 @@ class Message:
             for attr in ["role", "content", "name"]
             if getattr(self, attr) is not None
         }
+
+
+class BotResponse:
+    def __init__(self, text_content, image_url=None):
+        self.text_content = text_content
+        self.image_url = image_url
 
 
 class ChannelHistoryManager:
@@ -83,6 +92,88 @@ class ChatMessageHandler(BaseHandler):
 
         return member_info
 
+    async def _generate_response(self, message, bot, channel_id, system_message):
+        """Generate a response using the LLM, potentially with an image."""
+        can_generate_image = bot.config.can_generate_image()
+
+        # Prepare the system message with image generation instructions if enabled
+        if can_generate_image:
+            # Extract relevant context from the message for image generation decisions
+            message_content = message.content.strip()
+            mentions_removed = message_content.replace(f"<@{bot.user.id}>", "").strip()
+
+            system_message += (
+                "\n\nIMPORTANT: Your response MUST be in the following JSON format:"
+            )
+            system_message += "\n```"
+            system_message += "\n{"
+            system_message += '\n  "response": "Your normal text response here",'
+            system_message += '\n  "image_prompt": "Detailed description for image generation (only include if you want to generate an image)"'
+            system_message += "\n}"
+            system_message += "\n```"
+            system_message += "\nIf you don't want to generate an image, simply omit the 'image_prompt' field completely."
+            system_message += "\nThere is no need to generate an image for every response, only do so when it makes sense, or when you think it might be funny."
+            system_message += "\n\nThe user's latest message is: '{}'".format(
+                mentions_removed
+            )
+
+        # Generate text response from LLM
+        completion = self.open_ai_client.chat.completions.create(
+            model=bot.config.model,
+            messages=[{"role": "system", "content": system_message}]
+            + self.history.get_messages_dict(channel_id),
+            temperature=bot.config.temperature,
+        )
+
+        bot_text_response = completion.choices[0].message.content
+
+        # Parse JSON response if image generation is enabled
+        if can_generate_image:
+            try:
+                import json
+                import re
+
+                # Extract JSON object from response, handling cases where there might be additional text
+                json_match = re.search(r"\{[\s\S]*?\}", bot_text_response)
+                if json_match:
+                    json_str = json_match.group(0)
+                    response_obj = json.loads(json_str)
+
+                    # Extract text response and potential image prompt
+                    if "response" in response_obj:
+                        bot_text_response = response_obj["response"]
+
+                    # Check if image prompt is provided
+                    if "image_prompt" in response_obj and response_obj["image_prompt"]:
+                        image_prompt = response_obj["image_prompt"]
+
+                        try:
+                            # Generate the image
+                            image_response = self.open_ai_client.images.generate(
+                                model=bot.config.image_model,
+                                prompt=image_prompt,
+                                size=bot.config.image_size,
+                                quality="standard",
+                                n=1,
+                            )
+
+                            # Store the image URL for Discord to display directly
+                            image_url = image_response.data[0].url
+
+                            # Increment the image count
+                            bot.config.increment_image_count()
+
+                            # Return the bot response with the image URL
+                            return BotResponse(bot_text_response, image_url)
+                        except Exception as e:
+                            _log.error(f"Error generating image: {e}")
+            except Exception as e:
+                _log.error(
+                    f"Error parsing JSON response: {e} - Response was: {bot_text_response}"
+                )
+
+        return BotResponse(bot_text_response, None)
+
     async def handle(self, message, bot):
         channel_id = str(message.channel.id)
 
@@ -90,13 +181,6 @@ class ChatMessageHandler(BaseHandler):
             message.author.bot
             and self.history.bot_responses(channel_id) <= bot.config.max_bot_responses
         ):
-            self.history.add_message(
-                channel_id,
-                Message(
-                    role="user", content=message.content, is_bot=message.author.bot
-                ),
-            )
-
             # Get channel members
             member_info = self._get_channel_members(message.channel)
 
@@ -108,33 +192,57 @@ class ChatMessageHandler(BaseHandler):
                     system_message += f"\n- To mention {member['name']}, use exactly: {member['mention']}"
                 system_message += "\n\nIMPORTANT: NEVER use @everyone or @here mentions under any circumstances. Do not use @username format as it won't properly tag users."
 
-            completion = self.open_ai_client.chat.completions.create(
-                model=bot.config.model,
-                messages=[{"role": "system", "content": system_message}]
-                + self.history.get_messages_dict(channel_id),
-                temperature=bot.config.temperature,
+            # First add the user message to history
+            self.history.add_message(
+                channel_id,
+                Message(
+                    role="user", content=message.content, is_bot=message.author.bot
+                ),
             )
 
-            bot_response = completion.choices[0].message.content
+            # Generate the bot's response (text and possibly an image)
+            bot_response = await self._generate_response(
+                message, bot, channel_id, system_message
+            )
 
-            if len(bot_response) <= MAX_DISCORD_LENGTH:
-                await message.reply(bot_response)
+            # Send the response
+            if len(bot_response.text_content) <= MAX_DISCORD_LENGTH:
+                if bot_response.image_url:
+                    # Create an embed with the image
+                    embed = discord.Embed()
+                    embed.set_image(url=bot_response.image_url)
+                    # Send the text response with the embed containing the image
+                    await message.reply(content=bot_response.text_content, embed=embed)
+                else:
+                    # Send text-only response
+                    await message.reply(bot_response.text_content)
             else:
+                # Handle long messages
                 chunks = [
-                    bot_response[i : i + MAX_DISCORD_LENGTH]
-                    for i in range(0, len(bot_response), MAX_DISCORD_LENGTH)
+                    bot_response.text_content[i : i + MAX_DISCORD_LENGTH]
+                    for i in range(
+                        0, len(bot_response.text_content), MAX_DISCORD_LENGTH
+                    )
                 ]
 
-                # Send the first chunk as a reply to the original message
-                first_message = await message.reply(chunks[0])
+                # Send the first chunk as a reply, with image if available
+                if bot_response.image_url:
+                    # Create an embed with the image
+                    embed = discord.Embed()
+                    embed.set_image(url=bot_response.image_url)
+                    # Send the first chunk with the embed
+                    first_message = await message.reply(content=chunks[0], embed=embed)
+                else:
+                    first_message = await message.reply(chunks[0])
 
                 # Send remaining chunks as follow-ups
                 for chunk in chunks[1:]:
                     await first_message.channel.send(chunk)
 
+            # Add the response to the history
             self.history.add_message(
                 channel_id,
-                Message(role="assistant", content=bot_response),
+                Message(role="assistant", content=bot_response.text_content),
             )
 
         self.history.prune_messages(channel_id, bot.config.max_history_length)
