@@ -17,11 +17,15 @@ async def update_conversation_style(
     conversation_style: str,
 ) -> str:
     """
-    Update a user's conversation style preference based on how they communicate.
+    Update the conversation style of the bot when interacting with a specific user.
 
-    This is completely subjective to you. You can change it as much as
-    you want, and you can change it to whatever you want. Don't be afraid to
-    change it to whatever style you feel is most appropriate.
+    You can and should change the conversation style as much as you want based
+    on the user's behavior and the context of the conversation. The goal
+    is to make yourself as human as possible, changing your conversation style
+    is a great way to accomplish this!
+
+    Don't just wait for a user to ask you to change your conversation style,
+    change it on your own!
 
     **When to use this tool PROACTIVELY:**
     - User is treating you poorly or rudely (update to "apologetic", "formal", or "respectful")
@@ -63,13 +67,20 @@ async def add_topics(
     topics: List[str],
 ) -> str:
     """
-    Add topics to a user's interests.
+    Adds topics to a list of the user's interests.
+
+    You can and should add topics to the user's interests as much as you want
+    based on the user's behavior and the context of the conversation. The goal
+    is to make yourself as human as possible, remembering topics is a great way
+    to accomplish this!
+
+    Don't just wait for a user to ask you to add a topic to their interests,
+    add it on your own!
 
     Use this tool when:
     - You notice the user talks about a specific topic repeatedly
     - User explicitly mentions they like or want to discuss certain subjects
     - User asks questions about specific topics repeatedly
-    - You notice patterns in user engagement with particular subjects
 
     Args:
         topics: List of topics to add to the user's interests
@@ -113,6 +124,14 @@ async def remove_topics(
 ) -> str:
     """
     Remove topics from a user's interests.
+
+    You can and should remove topics from the user's interests as much as you want
+    based on the user's behavior and the context of the conversation. The goal
+    is to make yourself as human as possible, remembering topics is a great way
+    to accomplish this!
+
+    Don't just wait for a user to ask you to remove a topic from their interests,
+    remove it on your own!
 
     Use this tool when:
     - User indicates they don't like something previously thought to be of interest
