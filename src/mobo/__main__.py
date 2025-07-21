@@ -1,5 +1,8 @@
-from .client import Mobo
-from .config import MoboConfig
+"""
+Entry point for running the bot via: python -m mobo
+"""
 
-cfg = MoboConfig.from_env()
-Mobo(cfg).run()
+from .cli import main
+
+if __name__ == "__main__":
+    main()
