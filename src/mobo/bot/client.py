@@ -44,6 +44,27 @@ async def on_message(message):
     if not message.content.strip():
         return
 
+    # Only respond if bot is mentioned or if message is a reply to the bot
+    bot_mentioned = client.user in message.mentions
+    is_reply_to_bot = False
+
+    # Check if this is a reply to the bot
+    if message.reference and message.reference.message_id:
+        try:
+            referenced_message = await message.channel.fetch_message(
+                message.reference.message_id
+            )
+            is_reply_to_bot = referenced_message.author == client.user
+        except discord.NotFound:
+            # Referenced message not found, ignore
+            pass
+        except Exception as e:
+            logger.error(f"Error fetching referenced message: {e}")
+
+    # If not mentioned and not replying to bot, ignore the message
+    if not bot_mentioned and not is_reply_to_bot:
+        return
+
     try:
         # Show typing indicator while processing
         async with message.channel.typing():
