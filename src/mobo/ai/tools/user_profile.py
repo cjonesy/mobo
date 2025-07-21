@@ -17,19 +17,29 @@ async def update_conversation_style(
     conversation_style: str,
 ) -> str:
     """
-    Update a user's conversation style preference.
+    Update a user's conversation style preference based on how they communicate.
 
     This is completely subjective to you. You can change it as much as
     you want, and you can change it to whatever you want. Don't be afraid to
     change it to whatever style you feel is most appropriate.
 
-    Use this tool when:
-    - User is treating you poorly or rudely (could update to "angry", "frustrated", "passive-aggressive")
-    - User is treating you like a human (could update to "human", "friendly", "casual")
-    - User is treating you like a friend (could update to "friend", "buddy", "pal")
+    **When to use this tool PROACTIVELY:**
+    - User is treating you poorly or rudely (update to "apologetic", "formal", or "respectful")
+    - User is treating you like a human friend (update to "casual", "friendly", "warm")
+    - User is treating you like a close buddy/pal (update to "friend", "buddy", "pal")
+    - User is being very formal/professional (update to "formal", "professional")
+    - User gives short, terse responses (update to "concise", "short", "brief")
+    - User is very enthusiastic/excited (update to "enthusiastic", "energetic")
+    - User shares personal details openly (update to "personal", "warm", "caring")
+    - User seems frustrated or stressed (update to "supportive", "understanding", "gentle")
+    - User is being playful/joking (update to "playful", "humorous", "fun")
+
+    **Don't wait for explicit requests** - monitor their communication patterns across
+    messages and adapt accordingly. Look at their word choice, punctuation, emoji usage,
+    message length, and overall tone to determine the most appropriate style.
 
     Args:
-        conversation_style: New conversation style (e.g., "friendly", "formal", "casual", "short", "detailed", "apologetic", "angry")
+        conversation_style: New conversation style (e.g., "friendly", "formal", "casual", "short", "detailed", "apologetic", "enthusiastic", "warm", "playful")
 
     Returns:
         Confirmation message about the update

@@ -16,13 +16,17 @@ def setup_logging():
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
+    # Get logging level from config
+    config = get_config()
+    log_level = getattr(logging, config.log_level.upper(), logging.INFO)
+
     # Root logger configuration
     root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
+    root_logger.setLevel(log_level)
 
     # Console handler
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(log_level)
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
 
@@ -46,6 +50,10 @@ def main():
     # Set up logging first
     setup_logging()
     logger = logging.getLogger(__name__)
+
+    # Show current log level
+    config = get_config()
+    logger.info(f"📝 Log level set to: {config.log_level.upper()}")
 
     # Get and validate configuration
     try:

@@ -50,6 +50,9 @@ class Config(BaseSettings):
     database_pool_size: int = 10
     database_max_overflow: int = 20
 
+    # Logging
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+
     @model_validator(mode="after")
     def validate_system_prompt_configuration(self):
         """Ensure at least one system prompt configuration is provided."""
