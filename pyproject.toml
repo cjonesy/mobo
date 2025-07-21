@@ -1,25 +1,37 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "mobo"
-description = "A ChatGPT/Discord Chatbot"
-version = "0.0.0"
-readme = "README.md"
-requires-python = "~=3.8"
+version = "0.1.0"
+description = "Discord Bot with PydanticAI and intelligent conversation memory"
+requires-python = ">=3.11"
 dependencies = [
-    "discord.py==2.3.2",
-    "openai==1.55.3",
-    "requests==2.28.1",
-    "httpx==0.27.0"
+    "discord.py>=2.4.0",
+    "python-dotenv>=1.0.1",
+    "pydantic-ai>=0.4.4",
+    "openai>=1.97.0",
+    "numpy>=2.1.0",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.10.1",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "alembic>=1.14.0",
+    "httpx>=0.27.0",
+    "pgvector>=0.3.0",
+    "psycopg2-binary>=2.9.0",
 ]
 
-[tool.setuptools]
-include-package-data = false
+[project.scripts]
+mobo = "src.mobo.cli:main"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.uv]
+dev-dependencies = [
+    "mypy>=1.17.0",
+    "pytest>=8.4.1",
+    "ruff>=0.12.4",
+]
 
-[tool.pytest.ini_options]
-addopts = ["--import-mode=importlib", "--tb=short", "-vvv"]
+[tool.hatch.build.targets.wheel]
+packages = ["src"]

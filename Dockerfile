@@ -1,9 +1,22 @@
-FROM python:3.8-slim
+FROM python:3.11-slim
 
-WORKDIR /usr/src/mobo
+# Install UV
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
+WORKDIR /app
+
+# Copy UV configuration files first for better layer caching
+COPY pyproject.toml .
+
+# Install dependencies using UV
+RUN uv pip install --system --no-cache .
+
+# Copy the application code
 COPY . .
-RUN pip install --upgrade pip \
-&&  pip install --no-cache-dir .
 
-CMD ["python", "-m", "mobo"]
+# Create a non-root user and switch to it
+RUN useradd -m botuser
+USER botuser
+
+# Command to run the bot
+CMD ["python", "-m", "src.mobo"]

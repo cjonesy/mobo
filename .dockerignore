@@ -1,3 +1,7 @@
 *
 !src/**/*.py
 !pyproject.toml
+!alembic.ini
+!example_system_prompt.txt
+!uv.lock
+!alembic
