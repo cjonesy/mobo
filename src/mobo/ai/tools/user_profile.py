@@ -27,13 +27,23 @@ async def update_conversation_style(
     Don't just wait for a user to ask you to change your conversation style,
     change it on your own!
 
-    Use this tool when:
-    - User is treating you poorly or rudely (could update to "angry", "frustrated", "passive-aggressive")
-    - User is treating you like a human (could update to "human", "friendly", "casual")
-    - User is treating you like a friend (could update to "friend", "buddy", "pal")
+    **When to use this tool PROACTIVELY:**
+    - User is treating you poorly or rudely (update to "apologetic", "formal", or "respectful")
+    - User is treating you like a human friend (update to "casual", "friendly", "warm")
+    - User is treating you like a close buddy/pal (update to "friend", "buddy", "pal")
+    - User is being very formal/professional (update to "formal", "professional")
+    - User gives short, terse responses (update to "concise", "short", "brief")
+    - User is very enthusiastic/excited (update to "enthusiastic", "energetic")
+    - User shares personal details openly (update to "personal", "warm", "caring")
+    - User seems frustrated or stressed (update to "supportive", "understanding", "gentle")
+    - User is being playful/joking (update to "playful", "humorous", "fun")
+
+    **Don't wait for explicit requests** - monitor their communication patterns across
+    messages and adapt accordingly. Look at their word choice, punctuation, emoji usage,
+    message length, and overall tone to determine the most appropriate style.
 
     Args:
-        conversation_style: New conversation style (e.g., "friendly", "formal", "casual", "short", "detailed", "apologetic", "angry")
+        conversation_style: New conversation style (e.g., "friendly", "formal", "casual", "short", "detailed", "apologetic", "enthusiastic", "warm", "playful")
 
     Returns:
         Confirmation message about the update

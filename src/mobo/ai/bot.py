@@ -74,15 +74,17 @@ async def process_discord_message(
             topics_str = ", ".join(user_profile.topics_of_interest)
             profile_context_parts.append(f"User is interested in: {topics_str}")
 
-        # Inject user profile context if we have personalization info
-        if profile_context_parts:
-            profile_context = "\n".join(profile_context_parts)
-            user_message_with_context = (
-                f"[User Profile Context: {profile_context}]\n\n{user_message}"
-            )
-            logger.debug(f"Added profile context: {profile_context}")
-        else:
-            user_message_with_context = user_message
+        # Always add style management reminder with current style info
+        profile_context_parts.append(
+            f"Current conversation style: '{user_profile.conversation_style}'. Monitor this user's communication patterns and proactively update their conversation_style if their tone, formality, or approach suggests a different style would be more appropriate"
+        )
+
+        # Inject user profile context
+        profile_context = "\n".join(profile_context_parts)
+        user_message_with_context = (
+            f"[User Profile Context: {profile_context}]\n\n{user_message}"
+        )
+        logger.debug(f"Added profile context: {profile_context}")
 
         deps = BotDependencies(
             memory=memory,
