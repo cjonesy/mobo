@@ -34,12 +34,13 @@ async def search_conversation_history(
         Formatted string with relevant conversation excerpts and context
     """
     try:
+        logger.info(f"🔍 search_conversation_history tool called with query: {query}")
         memory = ctx.deps.memory
         user_id = ctx.deps.user_id
 
         # Search for similar messages in user's conversation history
         similar_messages = await memory.search_similar_messages(
-            query_text=query, user_id=user_id, limit=5, similarity_threshold=0.6
+            query_text=query, user_id=user_id, limit=5, similarity_threshold=0.3
         )
 
         if not similar_messages:

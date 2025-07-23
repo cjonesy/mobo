@@ -22,7 +22,7 @@ class Config(BaseSettings):
     openai_api_key: SecretStr = Field(
         default=SecretStr(""), description="OpenAI API key"
     )
-    openai_model: str = "gpt-4o-mini"
+    openai_model: str = "gpt-4.1"
     openai_temperature: float = 0.7
 
     # Image Generation

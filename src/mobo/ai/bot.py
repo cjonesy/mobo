@@ -25,10 +25,13 @@ def create_discord_agent() -> Agent[BotDependencies, str]:
 
     system_prompt = config.get_resolved_system_prompt_sync()
 
+    tools = get_discord_tools()
+    logger.info(f"🔧 Registering {len(tools)} tools with agent")
+
     agent = Agent(
         model=config.openai_model,
         system_prompt=system_prompt,
-        tools=get_discord_tools(),
+        tools=tools,
         deps_type=BotDependencies,
     )
 
@@ -82,7 +85,8 @@ async def process_discord_message(
         # Inject user profile context
         profile_context = "\n".join(profile_context_parts)
         user_message_with_context = (
-            f"[User Profile Context: {profile_context}]\n\n{user_message}"
+            f"[User Profile Context: {profile_context}]\n"
+            f"[Current User: {username} (ID: {user_id})]\n\n{user_message}"
         )
         logger.debug(f"Added profile context: {profile_context}")
 
@@ -100,7 +104,7 @@ async def process_discord_message(
 
         # Store the original message (without context) in memory
         user_msg = ModelRequest.user_text_prompt(user_message)
-        await memory.add_message(conversation_id, user_msg, "user")
+        await memory.add_message(conversation_id, user_msg, "user", user_id)
 
         if result.new_messages():
             for new_msg in result.new_messages():

@@ -18,7 +18,7 @@ from .user_profile import (
 from .conversation_history import search_conversation_history
 from .image_generation import generate_image
 from .bot_profile import update_bot_nickname, get_bot_nickname, update_bot_avatar
-from .discord import list_chat_users, get_channel_topic
+from .discord import list_chat_users, get_channel_topic, mention_user
 
 # Export only the main interfaces
 __all__ = [
@@ -45,5 +45,6 @@ def get_discord_tools() -> List[Any]:
         update_bot_avatar,
         list_chat_users,
         get_channel_topic,
+        mention_user,
         # Add more tools here as needed
     ]
