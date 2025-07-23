@@ -570,6 +570,135 @@ class MemoryManager:
         except Exception as e:
             logger.error(f"Error recording image generation: {e}")
 
+    async def can_respond_to_bot(self, user_id: str) -> tuple[bool, str]:
+        """
+        Check if the bot can respond to another bot based on consecutive interaction limits.
+
+        Args:
+            user_id: The Discord user ID of the bot attempting to interact
+
+        Returns:
+            Tuple of (can_respond: bool, reason: str)
+        """
+        try:
+            async with self.async_session() as session:
+                result = await session.execute(
+                    select(User).where(User.user_id == user_id)
+                )
+                user = result.scalar_one_or_none()
+
+                if user is None:
+                    # New bot user, allow interaction
+                    return True, "New bot user, interaction allowed"
+
+                limit = self.config.bot_interaction_limit
+                current_count = user.consecutive_bot_responses
+
+                if current_count >= limit:
+                    logger.info(
+                        f"Bot interaction limit reached for user {user_id}: {current_count}/{limit}"
+                    )
+                    return (
+                        False,
+                        f"Bot interaction limit reached ({current_count}/{limit}). Please wait for a human to join the conversation.",
+                    )
+
+                return True, f"Bot interaction allowed ({current_count}/{limit})"
+
+        except Exception as e:
+            logger.error(
+                f"Error checking bot interaction limit for user {user_id}: {e}"
+            )
+            # On error, allow interaction to avoid breaking the bot
+            return True, "Error checking limits, allowing interaction"
+
+    async def update_bot_interaction(self, user_id: str, is_bot: bool) -> None:
+        """
+        Update bot interaction counters.
+
+        Args:
+            user_id: The Discord user ID
+            is_bot: Whether this user is a bot
+        """
+        try:
+            async with self.async_session() as session:
+                result = await session.execute(
+                    select(User).where(User.user_id == user_id)
+                )
+                user = result.scalar_one_or_none()
+
+                if user is None:
+                    # Create new user with bot status
+                    user = User(
+                        user_id=user_id,
+                        username="",
+                        is_bot=is_bot,
+                        consecutive_bot_responses=1 if is_bot else 0,
+                        last_bot_interaction=datetime.now(timezone.utc),
+                    )
+                    session.add(user)
+                else:
+                    # Update existing user
+                    user.is_bot = is_bot
+                    user.last_active = datetime.now(timezone.utc)
+
+                    if is_bot:
+                        # Increment bot interaction counter
+                        user.consecutive_bot_responses += 1
+                        user.last_bot_interaction = datetime.now(timezone.utc)
+                    else:
+                        # Reset bot interaction counter when human interacts
+                        user.consecutive_bot_responses = 0
+
+                    user.updated_at = datetime.now(timezone.utc)
+
+                await session.commit()
+                logger.debug(
+                    f"Updated bot interaction for user {user_id}: is_bot={is_bot}, consecutive={user.consecutive_bot_responses}"
+                )
+
+        except Exception as e:
+            logger.error(f"Error updating bot interaction for user {user_id}: {e}")
+
+    async def reset_all_bot_interactions(self, channel_id: str) -> None:
+        """
+        Reset bot interaction counters for all users in a channel when a human participates.
+
+        Args:
+            channel_id: The Discord channel ID
+        """
+        try:
+            async with self.async_session() as session:
+                # Get all users who have participated in this channel
+                user_ids_result = await session.execute(
+                    select(Message.user_id)
+                    .join(Conversation, Message.conversation_id == Conversation.id)
+                    .where(Conversation.channel_id == channel_id)
+                    .where(Message.user_id.isnot(None))
+                    .distinct()
+                )
+                user_ids = [row[0] for row in user_ids_result.fetchall()]
+
+                # Reset consecutive bot responses for all users in this channel
+                for user_id in user_ids:
+                    user_result = await session.execute(
+                        select(User).where(User.user_id == user_id)
+                    )
+                    user = user_result.scalar_one_or_none()
+                    if user:
+                        user.consecutive_bot_responses = 0
+                        user.updated_at = datetime.now(timezone.utc)
+
+                await session.commit()
+                logger.info(
+                    f"Reset bot interaction counters for {len(user_ids)} users in channel {channel_id}"
+                )
+
+        except Exception as e:
+            logger.error(
+                f"Error resetting bot interactions for channel {channel_id}: {e}"
+            )
+
     async def close(self):
         """Close the database connection."""
         await self.engine.dispose()

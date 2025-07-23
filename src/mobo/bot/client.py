@@ -66,6 +66,32 @@ async def on_message(message):
     if not bot_mentioned and not is_reply_to_bot:
         return
 
+    # Bot interaction limit checking
+    is_author_bot = message.author.bot
+    user_id = str(message.author.id)
+
+    # Update bot interaction tracking
+    await memory_manager.update_bot_interaction(user_id, is_author_bot)
+
+    # If this is another bot, check interaction limits
+    if is_author_bot:
+        can_respond, reason = await memory_manager.can_respond_to_bot(user_id)
+        if not can_respond:
+            logger.info(
+                f"🤖 Bot interaction limit reached for {message.author.name} ({user_id}): {reason}"
+            )
+            return
+        else:
+            logger.debug(
+                f"🤖 Bot interaction allowed for {message.author.name} ({user_id}): {reason}"
+            )
+    else:
+        # Human user joined - reset bot interaction counters for this channel
+        await memory_manager.reset_all_bot_interactions(str(message.channel.id))
+        logger.debug(
+            f"👤 Human user {message.author.name} joined conversation - reset bot counters"
+        )
+
     try:
         # Show typing indicator while processing
         async with message.channel.typing():
@@ -77,7 +103,7 @@ async def on_message(message):
                 agent=discord_agent,
                 memory=memory_manager,
                 user_message=message.content,
-                user_id=str(message.author.id),
+                user_id=user_id,
                 channel_id=str(message.channel.id),
                 username=message.author.name,
                 discord_client=client,

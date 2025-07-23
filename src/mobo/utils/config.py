@@ -39,6 +39,12 @@ class Config(BaseSettings):
         default=SecretStr(""), description="Discord bot token"
     )
 
+    # Bot Behavior
+    bot_interaction_limit: int = Field(
+        default=5,
+        description="Maximum number of consecutive interactions with other bots before stopping responses",
+    )
+
     # Bot - System Prompt Configuration (at least one must be set)
     system_prompt: Optional[str] = None
     system_prompt_file: Optional[str] = None
