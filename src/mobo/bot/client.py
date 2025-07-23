@@ -17,6 +17,7 @@ discord_agent = create_discord_agent()
 
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
 client = discord.Client(intents=intents)
 
 
@@ -78,7 +79,7 @@ async def on_message(message):
                 user_message=message.content,
                 user_id=str(message.author.id),
                 channel_id=str(message.channel.id),
-                username=message.author.display_name,
+                username=message.author.name,
                 discord_client=client,
                 guild_id=guild_id,
             )

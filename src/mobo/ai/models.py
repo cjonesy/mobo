@@ -44,6 +44,9 @@ class User(Base):
     topics_of_interest: Mapped[List[str]] = mapped_column(
         ARRAY(String), nullable=False, default=[]
     )
+    topics_disliked: Mapped[List[str]] = mapped_column(
+        ARRAY(String), nullable=False, default=[]
+    )
     last_active: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -71,32 +74,21 @@ class User(Base):
         onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    # Relationships
-    conversations: Mapped[List["Conversation"]] = relationship(
-        "Conversation", back_populates="user"
-    )
-
     __table_args__ = (
-        Index("idx_user_id", "user_id"),
-        Index("idx_last_active", "last_active"),
+        Index("idx_users_user_id", "user_id"),
+        Index("idx_users_last_active", "last_active"),
     )
 
 
 class Conversation(Base):
-    """Conversation sessions between users and the bot."""
+    """Channel-wide conversation sessions."""
 
     __tablename__ = "conversations"
 
     id: Mapped[UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid4
     )
-    session_id: Mapped[str] = mapped_column(
-        String(200), unique=True, nullable=False, index=True
-    )
-    user_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), nullable=False
-    )
-    channel_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    channel_id: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -110,7 +102,6 @@ class Conversation(Base):
     )
 
     # Relationships
-    user: Mapped["User"] = relationship("User", back_populates="conversations")
     messages: Mapped[List["Message"]] = relationship(
         "Message", back_populates="conversation", cascade="all, delete-orphan"
     )
@@ -119,9 +110,8 @@ class Conversation(Base):
     )
 
     __table_args__ = (
-        Index("idx_session_id", "session_id"),
-        Index("idx_user_channel", "user_id", "channel_id"),
-        Index("idx_updated_at", "updated_at"),
+        Index("idx_conversations_channel_id", "channel_id"),
+        Index("idx_conversations_updated_at", "updated_at"),
     )
 
 
@@ -142,6 +132,12 @@ class Message(Base):
     message_type: Mapped[str] = mapped_column(
         String(50), nullable=False
     )  # 'user', 'assistant', 'system', etc.
+    user_id: Mapped[Optional[str]] = mapped_column(
+        String(50), nullable=True
+    )  # Discord user ID for user messages, None for assistant messages
+    username: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True
+    )  # Username stored at message creation time
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -154,9 +150,11 @@ class Message(Base):
     )
 
     __table_args__ = (
-        Index("idx_conversation_id", "conversation_id"),
-        Index("idx_created_at", "created_at"),
-        Index("idx_conversation_created", "conversation_id", "created_at"),
+        Index("idx_messages_conversation_id", "conversation_id"),
+        Index("idx_messages_created_at", "created_at"),
+        Index("idx_messages_conversation_created", "conversation_id", "created_at"),
+        Index("idx_messages_user_id", "user_id"),
+        Index("idx_messages_username", "username"),
     )
 
 
@@ -224,6 +222,7 @@ class UserProfile(BaseModel):
     username: str = ""
     conversation_style: str = "friendly"
     topics_of_interest: List[str] = Field(default_factory=list)
+    topics_disliked: List[str] = Field(default_factory=list)
     last_active: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     total_messages: int = 0
     is_bot: bool = False
@@ -239,7 +238,6 @@ class UserProfile(BaseModel):
 class ConversationInfo(BaseModel):
     """Pydantic model for conversation information."""
 
-    session_id: str
     user_id: str
     channel_id: str
     created_at: datetime

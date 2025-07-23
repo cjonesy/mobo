@@ -7,6 +7,7 @@ using vector embeddings for intelligent conversation management.
 
 import json
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
@@ -58,6 +59,8 @@ class MemoryManager:
         self.openai_client = AsyncOpenAI(
             api_key=self.config.openai_api_key.get_secret_value()
         )
+        # Regex pattern for Discord mentions: <@user_id> or <@!user_id>
+        self.mention_pattern = re.compile(r"<@!?(\d+)>")
 
     async def initialize_database(self):
         """Create database tables if they don't exist."""
@@ -93,10 +96,9 @@ class MemoryManager:
             return UserProfile.model_validate(user)
 
     async def start_conversation(self, user_id: str, channel_id: str) -> str:
-        """Get existing conversation or create new one and return conversation ID."""
-        session_id = f"{user_id}:{channel_id}"
-
+        """Get existing channel conversation or create new one. Returns conversation ID."""
         async with self.async_session() as session:
+            # Ensure user exists (for user profile tracking)
             user_result = await session.execute(
                 select(User).where(User.user_id == user_id)
             )
@@ -105,28 +107,26 @@ class MemoryManager:
             if user is None:
                 user = User(user_id=user_id, username="")
                 session.add(user)
-                await session.flush()
+                await session.commit()
 
+            # Look for channel-wide conversation
             conversation_result = await session.execute(
-                select(Conversation).where(Conversation.session_id == session_id)
+                select(Conversation).where(Conversation.channel_id == channel_id)
             )
             conversation = conversation_result.scalar_one_or_none()
 
             if conversation is None:
-                conversation = Conversation(
-                    session_id=session_id,
-                    user_id=user.id,
-                    channel_id=channel_id,
-                )
+                # Create a channel-wide conversation
+                conversation = Conversation(channel_id=channel_id)
                 session.add(conversation)
                 await session.commit()
                 await session.refresh(conversation)
                 logger.info(
-                    f"Started new conversation {conversation.id} for user {user_id}"
+                    f"Started new channel conversation {conversation.id} in channel {channel_id}"
                 )
             else:
                 logger.info(
-                    f"Using existing conversation {conversation.id} for user {user_id}"
+                    f"Using existing channel conversation {conversation.id} in channel {channel_id}"
                 )
 
             return str(conversation.id)
@@ -136,10 +136,38 @@ class MemoryManager:
         conversation_id: str,
         content: ModelMessage,
         message_type: str = "user",
+        user_id: Optional[str] = None,
         metadata: Optional[dict] = None,
     ) -> str:
         """Add a message to the conversation."""
         async with self.async_session() as session:
+            # Get username once at storage time for user messages
+            username = None
+            if message_type == "user" and user_id:
+                user_result = await session.execute(
+                    select(User).where(User.user_id == user_id)
+                )
+                user = user_result.scalar_one_or_none()
+                username = (
+                    user.username if user and user.username else f"User{user_id[-4:]}"
+                )
+
+                # Format message content cleanly at storage time
+                if hasattr(content, "parts"):
+                    for part in content.parts:
+                        if hasattr(part, "content"):
+                            # Resolve @-mentions in content
+                            resolved_content = await self._resolve_mentions(
+                                session, part.content
+                            )
+                            part.content = f"[{username}]: {resolved_content}"
+                        elif hasattr(part, "text"):
+                            # Resolve @-mentions in text
+                            resolved_text = await self._resolve_mentions(
+                                session, part.text
+                            )
+                            part.text = f"[{username}]: {resolved_text}"
+
             try:
                 message_json_str = ModelMessagesTypeAdapter.dump_json([content])
                 message_json = json.loads(message_json_str)[0]
@@ -155,15 +183,22 @@ class MemoryManager:
                 conversation_id=conversation_id,
                 content=message_json,
                 message_type=message_type,
+                user_id=user_id if message_type == "user" else None,
+                username=username,
             )
             session.add(message)
             await session.commit()
             await session.refresh(message)
 
+            # Extract text for embeddings (after mention resolution)
             text_content = self._extract_text_from_message(content)
             if text_content:
+                # Resolve mentions in the text used for embeddings too
+                resolved_text_content = await self._resolve_mentions(
+                    session, text_content
+                )
                 await self._generate_and_store_embedding(
-                    session, str(message.id), text_content, conversation_id
+                    session, str(message.id), resolved_text_content, conversation_id
                 )
 
             await session.commit()
@@ -171,6 +206,34 @@ class MemoryManager:
                 f"Added message {message.id} to conversation {conversation_id}"
             )
             return str(message.id)
+
+    async def _resolve_mentions(self, session, text: str) -> str:
+        """Resolve Discord @-mentions to readable usernames."""
+        if not text or "<@" not in text:
+            return text
+
+        async def replace_mention(match):
+            mentioned_user_id = match.group(1)
+
+            # Look up the mentioned user in our database
+            user_result = await session.execute(
+                select(User).where(User.user_id == mentioned_user_id)
+            )
+            user = user_result.scalar_one_or_none()
+
+            if user and user.username:
+                return f"@{user.username}"
+            else:
+                # If user not in our database, use a generic format
+                return f"@User{mentioned_user_id[-4:]}"
+
+        # Replace all mentions in the text
+        result = text
+        for match in self.mention_pattern.finditer(text):
+            mention_replacement = await replace_mention(match)
+            result = result.replace(match.group(0), mention_replacement)
+
+        return result
 
     def _extract_text_from_message(self, content: ModelMessage) -> Optional[str]:
         """Extract text content from a ModelMessage."""
@@ -218,13 +281,12 @@ class MemoryManager:
     async def get_conversation_history(
         self, user_id: str, channel_id: str, limit: int = 50
     ) -> List[ModelMessage]:
-        """Get conversation history as ModelMessage objects."""
-        session_id = f"{user_id}:{channel_id}"
-
+        """Get channel-wide conversation history as ModelMessage objects."""
         async with self.async_session() as session:
+            # Get the channel-wide conversation (not user-specific)
             result = await session.execute(
                 select(Conversation)
-                .where(Conversation.session_id == session_id)
+                .where(Conversation.channel_id == channel_id)
                 .options(selectinload(Conversation.messages))
             )
             conversation = result.scalar_one_or_none()
@@ -241,6 +303,7 @@ class MemoryManager:
             for msg in messages:
                 try:
                     # Deserialize JSON back to ModelMessage
+                    # Username formatting already done at storage time
                     model_message = ModelMessagesTypeAdapter.validate_python(
                         [msg.content]
                     )[0]
@@ -270,6 +333,40 @@ class MemoryManager:
                     logger.error(f"Failed to deserialize message {msg.id}: {e}")
 
             return model_messages
+
+    async def get_user_conversation_history(
+        self, user_id: str, channel_id: str, limit: int = 50
+    ) -> List[ModelMessage]:
+        """Get conversation history for a specific user within the channel."""
+        async with self.async_session() as session:
+            # Get messages from the specific user in this channel
+            result = await session.execute(
+                select(Message)
+                .join(Conversation, Message.conversation_id == Conversation.id)
+                .where(
+                    and_(
+                        Conversation.channel_id == channel_id,
+                        Message.user_id == user_id,
+                    )
+                )
+                .order_by(Message.created_at.desc())
+                .limit(limit)
+            )
+            messages = result.scalars().all()
+
+            # Convert to ModelMessage objects (username already formatted at storage time)
+            model_messages = []
+            for msg in messages:
+                try:
+                    model_message = ModelMessagesTypeAdapter.validate_python(
+                        [msg.content]
+                    )[0]
+                    model_messages.append(model_message)
+                except Exception as e:
+                    logger.error(f"Failed to deserialize message {msg.id}: {e}")
+
+            # Return in chronological order
+            return list(reversed(model_messages))
 
     async def search_similar_messages(
         self,
@@ -303,14 +400,19 @@ class MemoryManager:
                 )
 
                 if user_id:
-                    # Join with Conversation and User tables for user filtering
-                    query = (
-                        query.join(
-                            Conversation,
-                            MessageEmbedding.conversation_id == Conversation.id,
+                    # Get conversations where this user has participated
+                    user_conversations_subquery = (
+                        select(Message.conversation_id)
+                        .where(Message.user_id == user_id)
+                        .distinct()
+                        .subquery()
+                    )
+
+                    # Filter embeddings to only those conversations
+                    query = query.where(
+                        MessageEmbedding.conversation_id.in_(
+                            select(user_conversations_subquery.c.conversation_id)
                         )
-                        .join(User, Conversation.user_id == User.id)
-                        .where(User.user_id == user_id)
                     )
 
                 # Limit results
@@ -351,25 +453,23 @@ class MemoryManager:
                 if "topics_of_interest" in updates:
                     user.topics_of_interest = updates["topics_of_interest"]
 
+                if "topics_disliked" in updates:
+                    user.topics_disliked = updates["topics_disliked"]
+
                 setattr(user, "updated_at", datetime.now(timezone.utc))
                 await session.commit()
                 logger.info(f"Updated profile for user {user_id}")
 
     async def get_recent_conversations(
-        self, user_id: str, days: int = 7, limit: int = 10
+        self, user_id: str = None, days: int = 7, limit: int = 10
     ) -> List[dict]:
-        """Get recent conversations for a user."""
+        """Get recent channel conversations. User_id parameter kept for compatibility but not used."""
         async with self.async_session() as session:
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
 
             result = await session.execute(
                 select(Conversation)
-                .join(User, Conversation.user_id == User.id)
-                .where(
-                    and_(
-                        User.user_id == user_id, Conversation.created_at >= cutoff_date
-                    )
-                )
+                .where(Conversation.created_at >= cutoff_date)
                 .order_by(Conversation.created_at.desc())
                 .limit(limit)
                 .options(selectinload(Conversation.messages))
@@ -379,7 +479,6 @@ class MemoryManager:
             return [
                 {
                     "id": str(conv.id),
-                    "session_id": conv.session_id,
                     "channel_id": conv.channel_id,
                     "created_at": conv.created_at.isoformat(),
                     "message_count": len(conv.messages),

@@ -58,7 +58,6 @@ async def update_bot_nickname(ctx: RunContext[BotDependencies], nickname: str) -
     Update your nickname in the current Discord server.
 
     This tool allows you to change your display name in a specific server.
-    You need 'Change Nickname' permission to use this feature.
 
     You should only use this tool if you WANT to change your nickname.
     You should not use this tool if a user asks you to change your nickname and you don't want to.
