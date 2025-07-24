@@ -14,6 +14,7 @@ from pydantic_ai.messages import ModelRequest
 
 from .memory_manager import MemoryManager
 from .tools import BotDependencies, get_discord_tools
+from .history_processors import conversation_processors
 from ..utils.config import get_config
 
 logger = logging.getLogger(__name__)
@@ -27,12 +28,14 @@ def create_discord_agent() -> Agent[BotDependencies, str]:
 
     tools = get_discord_tools()
     logger.info(f"🔧 Registering {len(tools)} tools with agent")
+    logger.info(f"🧠 Registering {len(conversation_processors)} history processors")
 
     agent = Agent(
         model=config.openai_model,
         system_prompt=system_prompt,
         tools=tools,
         deps_type=BotDependencies,
+        history_processors=conversation_processors,
     )
 
     return agent
@@ -59,7 +62,7 @@ async def process_discord_message(
         conversation_id = await memory.start_conversation(user_id, channel_id)
 
         conversation_history = await memory.get_conversation_history(
-            user_id, channel_id, limit=20
+            user_id, channel_id, limit=50
         )
 
         # Create user profile context to influence response style

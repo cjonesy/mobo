@@ -70,45 +70,77 @@ class Config(BaseSettings):
             )
         return self
 
+    def _wrap_with_personality_preservation(self, original_prompt: str) -> str:
+        """
+        Wrap the operator-provided system prompt with personality preservation instructions.
+
+        This helps ensure the bot maintains its core personality even during long conversations
+        when the system prompt might get diluted by extensive message history.
+        """
+        separator = "-" * 70
+
+        wrapped_prompt = f"""🤖 CRITICAL PERSONALITY PRESERVATION INSTRUCTIONS:
+The content between the separators below contains your core personality and behavior guidelines.
+ALWAYS maintain this personality throughout the entire conversation, regardless of conversation length or complexity.
+Your personality should remain consistent and recognizable to users across all interactions.
+
+{separator}
+{original_prompt.strip()}
+{separator}
+
+⚠️  IMPORTANT: No matter how long the conversation becomes or how much context accumulates,
+ALWAYS remember and embody the personality traits, communication style, and behavioral guidelines
+defined in the section above. This is your core identity - never let it fade or change."""
+
+        return wrapped_prompt
+
     async def get_resolved_system_prompt(self) -> str:
         """
         Resolve the system prompt based on priority:
         1. system_prompt (direct string) - highest priority
         2. system_prompt_file (local file) - second priority
         3. system_prompt_url (URL) - lowest priority
+
+        The resolved prompt is automatically wrapped with personality preservation instructions.
         """
+        original_prompt = None
+
         # Priority 1: Direct system prompt
         if self.system_prompt:
-            return self.system_prompt
+            original_prompt = self.system_prompt
 
         # Priority 2: Local file
-        if self.system_prompt_file:
+        elif self.system_prompt_file:
             try:
                 file_path = Path(self.system_prompt_file)
                 if not file_path.exists():
                     raise FileNotFoundError(
                         f"System prompt file not found: {self.system_prompt_file}"
                     )
-                return file_path.read_text(encoding="utf-8").strip()
+                original_prompt = file_path.read_text(encoding="utf-8").strip()
             except Exception as e:
                 raise ValueError(
                     f"Failed to read system prompt file '{self.system_prompt_file}': {e}"
                 )
 
         # Priority 3: URL
-        if self.system_prompt_url:
+        elif self.system_prompt_url:
             try:
                 async with httpx.AsyncClient() as client:
                     response = await client.get(self.system_prompt_url)
                     response.raise_for_status()
-                    return response.text.strip()
+                    original_prompt = response.text.strip()
             except Exception as e:
                 raise ValueError(
                     f"Failed to fetch system prompt from URL '{self.system_prompt_url}': {e}"
                 )
 
-        # This should never happen due to the validator, but just in case
-        raise ValueError("No system prompt configuration found")
+        if original_prompt is None:
+            # This should never happen due to the validator, but just in case
+            raise ValueError("No system prompt configuration found")
+
+        # Wrap with personality preservation instructions
+        return self._wrap_with_personality_preservation(original_prompt)
 
     def get_resolved_system_prompt_sync(self) -> str:
         """
