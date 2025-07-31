@@ -70,6 +70,10 @@ class Config(BaseSettings):
 
     # Logging
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    verbose_logging: bool = Field(
+        default=False,
+        description="Enable verbose logging for LangChain agent execution",
+    )
 
     @model_validator(mode="after")
     def validate_personality_configuration(self) -> "Config":

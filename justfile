@@ -16,19 +16,20 @@ dev:
     @echo "🐘 Starting PostgreSQL in Docker..."
     docker-compose up -d postgres
     @echo "⏳ Waiting for PostgreSQL to be ready..."
-    @for i in {1..30}; do \
+    @i=1; while [ $i -le 30 ]; do \
         if docker-compose exec postgres pg_isready -U mobo >/dev/null 2>&1; then \
             echo "✅ PostgreSQL ready!"; \
             break; \
         fi; \
-        if [ $$i -eq 30 ]; then \
+        if [ $i -eq 30 ]; then \
             echo "❌ PostgreSQL failed to start after 30 seconds"; \
             echo "🔍 Checking logs:"; \
             docker-compose logs postgres; \
             exit 1; \
         fi; \
-        echo "  Attempt $$i/30..."; \
+        echo "  Attempt $i/30..."; \
         sleep 1; \
+        i=$((i+1)); \
     done
     @echo "🗄️ Initializing database schema..."
     uv run python -m src.mobo init-db

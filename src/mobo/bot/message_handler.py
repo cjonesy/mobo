@@ -1,11 +1,11 @@
-"""Discord message handler with LangGraph agent integration."""
+"""Discord message handler with LangChain agent integration."""
 
 import logging
 from typing import Optional
 
 import discord
 
-from ..agent.agent_graph import DiscordLangGraphAgent
+from ..chains import DiscordAgent
 from ..agent.bot_interaction_tracker import BotInteractionTracker
 from ..config import get_config, Config
 from ..agent.types import BotResponse
@@ -14,11 +14,11 @@ logger = logging.getLogger(__name__)
 
 
 class MessageHandler:
-    """Handles incoming Discord messages and routes them to the LangGraph agent."""
+    """Handles incoming Discord messages and routes them to the LangChain agent."""
 
     def __init__(self) -> None:
         self.config: Config = get_config()
-        self.agent: DiscordLangGraphAgent = DiscordLangGraphAgent()
+        self.agent: DiscordAgent = DiscordAgent()
         self.bot_tracker: BotInteractionTracker = BotInteractionTracker()
 
     async def initialize(self) -> None:
@@ -161,7 +161,7 @@ class MessageHandler:
                     logger.error(f"Error fetching conversation history: {e}")
                     cleaned_message = "[System: User mentioned me with no message, but couldn't retrieve conversation context]"
 
-            # Process the message through the LangGraph agent
+            # Process the message through the LangChain agent
             response: BotResponse = await self.agent.process_message(
                 user_message=cleaned_message,
                 user_id=user_id,

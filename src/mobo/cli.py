@@ -15,9 +15,21 @@ def setup_logging(log_level: str) -> None:
     """Set up logging configuration."""
     level: int = getattr(logging, log_level.upper(), logging.INFO)
 
-    # Configure logging format
-    formatter: logging.Formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    # Import colorlog for colored output
+    import colorlog
+
+    # Configure colored logging format
+    formatter = colorlog.ColoredFormatter(
+        "%(asctime)s %(log_color)s%(levelname)-8s%(reset)s %(blue)s%(name)-32s%(reset)s %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        reset=True,
+        log_colors={
+            "DEBUG": "cyan",
+            "INFO": "green",
+            "WARNING": "yellow",
+            "ERROR": "red",
+            "CRITICAL": "red,bg_white",
+        },
     )
 
     # Console handler
@@ -27,6 +39,10 @@ def setup_logging(log_level: str) -> None:
     # Root logger
     root_logger: logging.Logger = logging.getLogger()
     root_logger.setLevel(level)
+
+    # Remove any existing handlers to avoid duplicates
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
     root_logger.addHandler(console_handler)
 
     # Set specific loggers
@@ -36,13 +52,12 @@ def setup_logging(log_level: str) -> None:
 
 
 @click.group()
-@click.option("--log-level", default="INFO", help="Logging level")
 @click.pass_context
-def cli(ctx: click.Context, log_level: str) -> None:
-    """LangGraph Discord Bot CLI."""
+def cli(ctx: click.Context) -> None:
+    """LangChain Discord Bot CLI."""
     ctx.ensure_object(dict)
-    ctx.obj["log_level"] = log_level
-    setup_logging(log_level)
+    config = get_config()
+    setup_logging(config.log_level)
 
 
 @cli.command()
@@ -144,7 +159,7 @@ def init_db(ctx: click.Context) -> None:
         click.echo("🗄️ Initializing database...")
 
         try:
-            from .agent.memory import RAGMemory
+            from .memory import RAGMemory
             from .agent.user_profiles import UserProfileManager
             from .agent.bot_interaction_tracker import BotInteractionTracker
 

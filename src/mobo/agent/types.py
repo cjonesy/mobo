@@ -1,16 +1,14 @@
 """Type definitions for the Discord bot."""
 
-import io
 from dataclasses import dataclass
 from typing import Optional
 
 
 @dataclass
 class BotFile:
-    """Represents a file to be sent with a Discord message."""
+    """Represents a file URL to be sent with a Discord message."""
 
-    content: bytes | io.BytesIO
-    filename: str
+    url: str
     description: Optional[str] = None
 
 
@@ -27,15 +25,17 @@ class BotResponse:
 
     def add_file(
         self,
-        content: bytes | io.BytesIO,
-        filename: str,
+        url: str,
         description: Optional[str] = None,
     ) -> None:
-        """Add a file to the response."""
+        """Add a file URL to the response."""
         if self.files is None:
             self.files = []
         self.files.append(
-            BotFile(content=content, filename=filename, description=description)
+            BotFile(
+                url=url,
+                description=description,
+            )
         )
 
     def has_files(self) -> bool:

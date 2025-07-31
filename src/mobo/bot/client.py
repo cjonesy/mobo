@@ -1,9 +1,11 @@
 """Discord client implementation using LangGraph agent."""
 
 import logging
+import tempfile
 from typing import Any
 import discord
-import io
+import httpx
+
 
 from .message_handler import MessageHandler
 from ..config import get_config, Config
@@ -52,47 +54,41 @@ class DiscordBot:
                     logger.error("Bot user is not available")
                     return
 
-                response = await self.message_handler.handle_message(
-                    message, self.client.user
-                )
+                async with message.channel.typing():
+                    response = await self.message_handler.handle_message(
+                        message, self.client.user
+                    )
 
-                if response:
-                    # Show typing indicator while preparing response
-                    async with message.channel.typing():
+                    if response:
                         try:
-                            # Handle files if any
                             files: list[discord.File] = []
-                            bytesio_objects: list[io.BytesIO] = (
-                                []
-                            )  # Track BytesIO objects for cleanup
 
                             if response.has_files() and response.files is not None:
                                 for bot_file in response.files:
-                                    discord_file: discord.File
-                                    if isinstance(bot_file.content, io.BytesIO):
-                                        discord_file = discord.File(
-                                            bot_file.content, filename=bot_file.filename
-                                        )
-                                        bytesio_objects.append(bot_file.content)
-                                    else:
-                                        bio: io.BytesIO = io.BytesIO(bot_file.content)
-                                        discord_file = discord.File(
-                                            bio,
-                                            filename=bot_file.filename,
-                                        )
-                                        bytesio_objects.append(bio)
-                                    files.append(discord_file)
+                                    async with httpx.AsyncClient() as client:
+                                        file_response = await client.get(bot_file.url)
+                                        if file_response.status_code == 200:
+                                            temp_file = tempfile.NamedTemporaryFile(
+                                                suffix=".png", delete=False
+                                            )
+                                            temp_file.write(file_response.content)
+                                            temp_file.flush()
+                                            discord_file = discord.File(temp_file.name)
+                                            files.append(discord_file)
 
-                            # Send the response with any files
+                                            # Store temp file for cleanup
+                                            if not hasattr(response, "_temp_files"):
+                                                response._temp_files = []
+                                            response._temp_files.append(temp_file)
                             try:
                                 if files:
                                     await message.reply(response.text, files=files)
                                 else:
                                     await message.reply(response.text)
                             finally:
-                                # Ensure BytesIO objects are properly closed
-                                for bio in bytesio_objects:
-                                    bio.close()
+                                if hasattr(response, "_temp_files"):
+                                    for tmp_file in response._temp_files:
+                                        tmp_file.close()
 
                         except Exception as e:
                             logger.error(f"Error sending response: {e}")
