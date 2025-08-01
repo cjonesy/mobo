@@ -267,6 +267,32 @@ class UserProfileManager:
             logger.error(f"Failed to get users with tone {tone}: {e}")
             return []
 
+    def format_profile_summary(self, profile: dict[str, Any]) -> str:
+        """Format user profile into a readable summary string."""
+        tone = profile.get("tone", "neutral")
+        likes = profile.get("likes", [])
+        dislikes = profile.get("dislikes", [])
+
+        return f"Tone: {tone}, Likes: {likes}, Dislikes: {dislikes}"
+
+    def format_profile_for_prompt(self, profile: dict[str, Any]) -> str:
+        """Format user profile for system prompt display."""
+        likes = profile.get("likes", [])
+        dislikes = profile.get("dislikes", [])
+
+        parts = []
+        if likes:
+            parts.append(f"- They enjoy: {', '.join(likes)}")
+        else:
+            parts.append("- They enjoy: ")
+
+        if dislikes:
+            parts.append(f"- They dislike: {', '.join(dislikes)}")
+        else:
+            parts.append("- They dislike: ")
+
+        return "\n                  ".join(parts)
+
     async def close(self) -> None:
         """Close database connections."""
         await self.engine.dispose()

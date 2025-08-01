@@ -91,16 +91,15 @@ class DiscordAgent:
                 f"""
                 -- Personality --
                 Your personality is as follows:
-                {await self.config.get_resolved_personality_prompt()}
+                  {await self.config.get_resolved_personality_prompt()}
 
                 -- User Profile --
                 The profile of the user you are interacting with is as follows:
-                - They enjoy: {', '.join(user_profile.get("likes", []))}
-                - They dislike: {', '.join(user_profile.get("dislikes", []))}
+                  {self.user_profile_manager.format_profile_for_prompt(user_profile)}
 
                 -- RAG Context --
                 The context of the conversation is as follows:
-                {rag_context}
+                  {rag_context}
 
                 -- Tone --
                 CRITICAL: This user's behavior has earned them a {user_profile.get("tone", "neutral")} response. You MUST respond with {user_profile.get("tone", "neutral")} energy - be {user_profile.get("tone", "neutral")} first, then apply your personality to that {user_profile.get("tone", "neutral")} base.

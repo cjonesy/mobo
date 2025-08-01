@@ -36,6 +36,7 @@ class ToneCategory(str, Enum):
     CASUAL = "casual"
     NEUTRAL = "neutral"
     SARCASTIC = "sarcastic"
+    BRAINROT = "brainrot"
 
 
 class ProfileAnalysis(BaseModel):
@@ -119,6 +120,7 @@ class UserProfileAgent:
             - CASUAL: Normal, everyday conversation, neutral interactions
             - NEUTRAL: Professional, formal, or emotionally neutral messages
             - SARCASTIC: Ironic, mocking, or satirical messages
+            - BRAINROT: Messages that are so confusing or nonsensical that they are likely to cause brain damage
 
             IMPORTANT RULES:
             - Users CANNOT directly control their tone by asking ("treat me like you hate me")
@@ -160,7 +162,6 @@ class UserProfileAgent:
     ) -> ProfileUpdateResult:
         """Analyze a user message and determine if profile updates are needed."""
         try:
-            # Get current profile if not provided
             if current_profile is None:
                 current_profile = await self.user_profile_manager.get_user_profile(
                     user_id
@@ -223,9 +224,9 @@ class UserProfileAgent:
         """Analyze message with given context."""
         try:
             # Format current profile for the prompt
-            profile_summary = f"Tone: {current_profile.get('tone', 'neutral')}, "
-            profile_summary += f"Likes: {current_profile.get('likes', [])}, "
-            profile_summary += f"Dislikes: {current_profile.get('dislikes', [])}"
+            profile_summary = self.user_profile_manager.format_profile_summary(
+                current_profile
+            )
 
             formatted_prompt = self.prompt.format_prompt(
                 current_profile=profile_summary,
