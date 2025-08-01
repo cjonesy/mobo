@@ -4,6 +4,7 @@ from .discord_tools import (
     change_nickname,
     get_current_chat_users,
     mention_user,
+    mention_message_author,
 )
 from .image_generation import generate_image
 from .user_profile_tools import (
@@ -19,6 +20,7 @@ __all__ = [
     "change_nickname",
     "get_current_chat_users",
     "mention_user",
+    "mention_message_author",
     "generate_image",
     "update_user_tone",
     "add_user_interests",
@@ -36,6 +38,7 @@ def get_all_tools():
         change_nickname,
         get_current_chat_users,
         mention_user,
+        mention_message_author,
         update_user_tone,
         add_user_interests,
         remove_user_interests,

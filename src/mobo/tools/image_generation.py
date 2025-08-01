@@ -1,10 +1,8 @@
 """Image generation tool using DALL-E."""
 
 import logging
-import time
 from typing import Any
 
-import httpx
 from langchain_core.tools import tool
 
 from ..config import get_config
@@ -33,6 +31,7 @@ async def generate_image(prompt: str) -> Any:
         or error message string on failure
     """
     try:
+        logger.info(f"Generating image with prompt: {prompt}")
         config = get_config()
 
         from openai import AsyncOpenAI

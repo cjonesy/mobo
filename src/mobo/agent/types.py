@@ -1,7 +1,7 @@
 """Type definitions for the Discord bot."""
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Any
 
 
 @dataclass
@@ -18,6 +18,7 @@ class BotResponse:
 
     text: str
     files: Optional[list[BotFile]] = None
+    _temp_files: Optional[list[Any]] = None
 
     def __post_init__(self) -> None:
         if self.files is None:

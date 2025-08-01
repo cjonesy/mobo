@@ -1,6 +1,7 @@
 """RAG memory system with embeddings and vector similarity search."""
 
 import logging
+import textwrap
 from typing import Optional, Any, Sequence
 
 from sqlalchemy import text, Result
@@ -44,9 +45,8 @@ class RAGMemory:
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
 
             # Create conversation_memory table
-            await conn.execute(
-                text(
-                    """
+            create_table_sql = textwrap.dedent(
+                """
                 CREATE TABLE IF NOT EXISTS conversation_memory (
                     id SERIAL PRIMARY KEY,
                     user_id TEXT,
@@ -57,20 +57,19 @@ class RAGMemory:
                     timestamp TIMESTAMP DEFAULT now()
                 )
             """
-                )
-            )
+            ).strip()
+            await conn.execute(text(create_table_sql))
 
             # Create vector similarity index
-            await conn.execute(
-                text(
-                    """
+            create_index_sql = textwrap.dedent(
+                """
                 CREATE INDEX IF NOT EXISTS idx_conversation_embedding
                 ON conversation_memory
                 USING ivfflat (embedding vector_cosine_ops)
                 WITH (lists = 100)
             """
-                )
-            )
+            ).strip()
+            await conn.execute(text(create_index_sql))
 
     async def store_message(
         self, user_id: str, channel_id: str, role: str, content: str
@@ -111,6 +110,7 @@ class RAGMemory:
         user_id: Optional[str] = None,
         channel_id: Optional[str] = None,
         limit: int = 5,
+        similarity_threshold: float = 0.5,
     ) -> list[dict[str, Any]]:
         """Retrieve similar messages using vector similarity search."""
         try:
@@ -138,14 +138,21 @@ class RAGMemory:
                 f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
             )
 
-            sql_query: str = f"""
-                SELECT id, user_id, channel_id, role, content, timestamp,
-                       embedding <=> '{embedding_str}'::vector AS similarity
-                FROM conversation_memory
-                {where_clause}
-                ORDER BY similarity
+            sql_query = textwrap.dedent(
+                f"""
+                WITH similarity_scores AS (
+                    SELECT id, user_id, channel_id, role, content, timestamp,
+                           1 - (embedding <=> '{embedding_str}'::vector) AS similarity
+                    FROM conversation_memory
+                    {where_clause}
+                )
+                SELECT *
+                FROM similarity_scores
+                WHERE similarity > {similarity_threshold}
+                ORDER BY similarity DESC
                 LIMIT :limit
             """
+            ).strip()
 
             async with self.async_session() as session:
                 result: Result[Any] = await session.execute(text(sql_query), params)
@@ -191,13 +198,15 @@ class RAGMemory:
                 f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
             )
 
-            sql_query: str = f"""
+            sql_query = textwrap.dedent(
+                f"""
                 SELECT id, user_id, channel_id, role, content, timestamp
                 FROM conversation_memory
                 {where_clause}
                 ORDER BY timestamp DESC
                 LIMIT :limit
             """
+            ).strip()
 
             async with self.async_session() as session:
                 result: Result[Any] = await session.execute(text(sql_query), params)
@@ -217,6 +226,59 @@ class RAGMemory:
 
         except Exception as e:
             logger.error(f"Failed to retrieve recent messages: {e}")
+            return []
+
+    async def get_earliest_messages(
+        self,
+        user_id: Optional[str] = None,
+        channel_id: Optional[str] = None,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Retrieve the earliest messages chronologically for context."""
+        try:
+            where_clauses: list[str] = []
+            params: dict[str, Any] = {"limit": limit}
+
+            if user_id:
+                where_clauses.append("user_id = :user_id")
+                params["user_id"] = user_id
+
+            if channel_id:
+                where_clauses.append("channel_id = :channel_id")
+                params["channel_id"] = channel_id
+
+            where_clause: str = (
+                f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+            )
+
+            sql_query = textwrap.dedent(
+                f"""
+                SELECT id, user_id, channel_id, role, content, timestamp
+                FROM conversation_memory
+                {where_clause}
+                ORDER BY timestamp ASC
+                LIMIT :limit
+            """
+            ).strip()
+
+            async with self.async_session() as session:
+                result: Result[Any] = await session.execute(text(sql_query), params)
+                rows: Sequence[Row[Any]] = result.fetchall()
+
+                return [
+                    {
+                        "id": row.id,
+                        "user_id": row.user_id,
+                        "channel_id": row.channel_id,
+                        "role": row.role,
+                        "content": row.content,
+                        "timestamp": row.timestamp,
+                    }
+                    for row in rows
+                ]
+
+        except Exception as e:
+            logger.error(f"Failed to retrieve earliest messages: {e}")
             return []
 
     async def close(self) -> None:

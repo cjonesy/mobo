@@ -25,6 +25,10 @@ class Config(BaseSettings):
     )
     openai_model: str = "gpt-4o"
     openai_temperature: float = 0.7
+    rag_model: str = Field(
+        default="gpt-4o-mini",
+        description="OpenAI model for RAG query analysis (cheaper/faster model recommended)",
+    )
     embedding_model: str = "text-embedding-3-small"
 
     # Image Generation
@@ -51,7 +55,7 @@ class Config(BaseSettings):
         description="Number of similar past messages to retrieve for context",
     )
     max_context_messages: int = Field(
-        default=5,
+        default=10,
         description="Maximum number of recent conversation messages to include in context",
     )
 

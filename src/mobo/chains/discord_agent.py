@@ -1,13 +1,10 @@
 """Discord bot agent using LangChain AgentExecutor."""
 
 import logging
-import tempfile
-from tempfile import NamedTemporaryFile
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, IO
 
 import discord
 import httpx
-from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_openai_tools_agent, AgentExecutor
 from pydantic import SecretStr
@@ -15,7 +12,7 @@ from pydantic import SecretStr
 from ..config import get_config
 from ..prompts import create_simple_discord_bot_prompt
 from ..tools import get_all_tools, set_discord_context
-from ..memory import RAGMemory
+from ..memory import RAGMemory, RAGAgent
 from ..agent.user_profiles import UserProfileManager
 from ..agent.bot_interaction_tracker import BotInteractionTracker
 from ..agent.types import BotResponse
@@ -29,6 +26,7 @@ class DiscordAgent:
     def __init__(self) -> None:
         self.config = get_config()
         self.rag_memory = RAGMemory()
+        self.rag_agent = RAGAgent()
         self.user_profile_manager = UserProfileManager()
         self.bot_interaction_tracker = BotInteractionTracker()
 
@@ -53,7 +51,6 @@ class DiscordAgent:
             handle_parsing_errors=True,
             max_iterations=3,
             return_intermediate_steps=True,
-            handle_tool_error=True,
         )
 
     async def _get_context_and_profile(
@@ -61,33 +58,22 @@ class DiscordAgent:
     ) -> tuple[dict[str, Any], str]:
         """Get user profile and RAG context for the conversation."""
         try:
+            # Get user profile
             user_profile = await self.user_profile_manager.get_user_profile(user_id)
 
-            similar_messages = await self.rag_memory.get_similar_messages(
-                query=user_message,
-                channel_id=channel_id,
-                limit=self.config.top_k_memory_results,
+            # Use the intelligent RAG agent to analyze and retrieve context
+            rag_result = await self.rag_agent.analyze_and_retrieve(
+                query=user_message, user_id=user_id, channel_id=channel_id
             )
-
-            recent_messages = await self.rag_memory.get_recent_messages(
-                channel_id=channel_id, limit=10
-            )
-
-            # Format RAG context
-            context_messages = similar_messages + recent_messages
-            rag_context = ""
-            if context_messages:
-                rag_context = "Recent conversation context:\n"
-                for msg in context_messages[-self.config.max_context_messages :]:
-                    role = msg.get("role", "unknown")
-                    content = msg.get("content", "")[:200]  # Truncate long messages
-                    rag_context += f"- {role}: {content}\n"
 
             logger.debug(
-                f"Retrieved {len(similar_messages)} similar messages and {len(recent_messages)} recent messages"
+                f"RAG strategy: {rag_result.strategy_used.query_type}, "
+                f"threshold: {rag_result.strategy_used.similarity_threshold}, "
+                f"messages: {rag_result.message_count}, "
+                f"reasoning: {rag_result.strategy_used.reasoning}"
             )
 
-            return user_profile, rag_context
+            return user_profile, rag_result.context
 
         except Exception as e:
             logger.error(f"Error getting context and profile: {e}")
@@ -191,13 +177,13 @@ class DiscordAgent:
         channel_id: str,
         discord_client: Optional[discord.Member] = None,
         guild_id: Optional[str] = None,
-        temp_file: Optional[NamedTemporaryFile] = None,
+        temp_file: Optional[IO[bytes]] = None,
     ) -> Optional[BotResponse]:
         """Process a message through the LangChain agent."""
         try:
             # Set Discord context for tools
             if discord_client:
-                set_discord_context(discord_client, guild_id, channel_id)
+                set_discord_context(discord_client, guild_id, channel_id, user_id)
 
             # Get context and user profile
             user_profile, rag_context = await self._get_context_and_profile(
@@ -241,5 +227,6 @@ class DiscordAgent:
     async def close(self) -> None:
         """Close all components."""
         await self.rag_memory.close()
+        await self.rag_agent.close()
         await self.user_profile_manager.close()
         await self.bot_interaction_tracker.close()

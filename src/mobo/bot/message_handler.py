@@ -162,7 +162,7 @@ class MessageHandler:
                     cleaned_message = "[System: User mentioned me with no message, but couldn't retrieve conversation context]"
 
             # Process the message through the LangChain agent
-            response: BotResponse = await self.agent.process_message(
+            response: Optional[BotResponse] = await self.agent.process_message(
                 user_message=cleaned_message,
                 user_id=user_id,
                 channel_id=channel_id,
@@ -171,7 +171,7 @@ class MessageHandler:
             )
 
             logger.info(
-                f"Generated response for {message.author.name}: {response.text[:100]}"
+                f"Generated response for {message.author.name}: {response.text[:100] if response else 'No response'}"
             )
             return response
 

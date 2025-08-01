@@ -54,44 +54,48 @@ class DiscordBot:
                     logger.error("Bot user is not available")
                     return
 
+                # Skip bot's own messages immediately
+                if message.author == self.client.user:
+                    return
+
+                # Process message with typing indicator
                 async with message.channel.typing():
                     response = await self.message_handler.handle_message(
                         message, self.client.user
                     )
 
-                    if response:
-                        try:
-                            files: list[discord.File] = []
+                # Prepare files and send message
+                if response:
+                    try:
+                        files: list[discord.File] = []
+                        if response.has_files() and response.files is not None:
+                            for bot_file in response.files:
+                                async with httpx.AsyncClient() as client:
+                                    file_response = await client.get(bot_file.url)
+                                    if file_response.status_code == 200:
+                                        temp_file = tempfile.NamedTemporaryFile(
+                                            suffix=".png", delete=False
+                                        )
+                                        temp_file.write(file_response.content)
+                                        temp_file.flush()
+                                        discord_file = discord.File(temp_file.name)
+                                        files.append(discord_file)
 
-                            if response.has_files() and response.files is not None:
-                                for bot_file in response.files:
-                                    async with httpx.AsyncClient() as client:
-                                        file_response = await client.get(bot_file.url)
-                                        if file_response.status_code == 200:
-                                            temp_file = tempfile.NamedTemporaryFile(
-                                                suffix=".png", delete=False
-                                            )
-                                            temp_file.write(file_response.content)
-                                            temp_file.flush()
-                                            discord_file = discord.File(temp_file.name)
-                                            files.append(discord_file)
+                                        # Store temp file for cleanup
+                                        if response._temp_files is None:
+                                            response._temp_files = []
+                                        response._temp_files.append(temp_file)
 
-                                            # Store temp file for cleanup
-                                            if not hasattr(response, "_temp_files"):
-                                                response._temp_files = []
-                                            response._temp_files.append(temp_file)
-                            try:
-                                if files:
-                                    await message.reply(response.text, files=files)
-                                else:
-                                    await message.reply(response.text)
-                            finally:
-                                if hasattr(response, "_temp_files"):
-                                    for tmp_file in response._temp_files:
-                                        tmp_file.close()
+                        if files:
+                            await message.reply(response.text, files=files)
+                        else:
+                            await message.reply(response.text)
+                    except Exception as e:
+                        logger.error(f"Error sending response: {e}")
 
-                        except Exception as e:
-                            logger.error(f"Error sending response: {e}")
+                if response and response._temp_files is not None:
+                    for tmp_file in response._temp_files:
+                        tmp_file.close()
 
             except Exception as e:
                 logger.error(f"Error in on_message: {e}")

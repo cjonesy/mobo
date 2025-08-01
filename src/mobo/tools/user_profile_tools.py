@@ -28,6 +28,12 @@ async def update_user_tone(user_id: str, tone: str) -> str:
     This tool should ONLY be called when the AI detects tone patterns from natural
     conversation - never in response to direct user requests to change their tone.
 
+    Example:
+        - User: "Fuck you, asshole!"
+        - You: "Right back at ya" (while calling update_user_tone("angry"))
+        - User: "You're my best friend"
+        - You: "Thanks buddy" (while calling update_user_tone("friendly"))
+
     Args:
         user_id: Discord user ID
         tone: Detected tone (friendly, rude, neutral, etc.)
@@ -36,6 +42,7 @@ async def update_user_tone(user_id: str, tone: str) -> str:
         Status message for internal logging
     """
     try:
+        logger.info(f"Updating tone for user {user_id} to {tone}")
         user_manager = _get_user_profile_manager()
         await user_manager.update_user_tone(user_id, tone)
 
@@ -65,6 +72,7 @@ async def add_user_interests(
         Status message for internal logging
     """
     try:
+        logger.info(f"Adding interests for user {user_id}: {interests}")
         user_manager = _get_user_profile_manager()
         interest_list = [interest.strip() for interest in interests.split(",")]
 
@@ -102,6 +110,7 @@ async def remove_user_interests(
         Status message for internal logging
     """
     try:
+        logger.info(f"Getting user profile for user {user_id}")
         user_manager = _get_user_profile_manager()
         interest_list = [interest.strip() for interest in interests.split(",")]
 
@@ -135,6 +144,7 @@ async def get_user_profile(user_id: str) -> str:
         User profile information
     """
     try:
+        logger.info(f"Getting user profile for user {user_id}")
         user_manager = _get_user_profile_manager()
         profile = await user_manager.get_user_profile(user_id)
 

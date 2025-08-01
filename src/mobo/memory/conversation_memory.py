@@ -4,7 +4,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from langchain_core.memory import BaseMemory
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from pydantic import Field
 
 from .rag_memory import RAGMemory
@@ -48,7 +48,7 @@ class ConversationMemory(BaseMemory):
             )
 
             # Convert to LangChain message format
-            messages = []
+            messages: list[HumanMessage | AIMessage] = []
             for msg in recent_messages:
                 if msg["role"] == "user":
                     messages.append(HumanMessage(content=msg["content"]))
