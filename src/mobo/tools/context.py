@@ -24,7 +24,7 @@ def set_discord_context(
         "channel_id": channel_id,
         "message_author_id": message_author_id,
     }
-    logger.info(
+    logger.debug(
         f"🔧 SET Discord context - guild: {guild_id}, channel: {channel_id}, author: {message_author_id}"
     )
 
@@ -33,7 +33,7 @@ def get_discord_context() -> Optional[dict[str, Any]]:
     """Get Discord context for tools."""
     global _discord_context
     context = _discord_context if _discord_context else None
-    logger.info(
+    logger.debug(
         f"🔍 GET Discord context - available: {context is not None}, channel_id: {context.get('channel_id') if context else 'N/A'}"
     )
     return context

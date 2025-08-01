@@ -29,6 +29,10 @@ class Config(BaseSettings):
         default="gpt-4o-mini",
         description="OpenAI model for RAG query analysis (cheaper/faster model recommended)",
     )
+    user_profile_model: str = Field(
+        default="gpt-4o-mini",
+        description="OpenAI model for user profile analysis (cheaper/faster model recommended)",
+    )
     embedding_model: str = "text-embedding-3-small"
 
     # Image Generation
@@ -94,16 +98,6 @@ class Config(BaseSettings):
             )
         return self
 
-    def _wrap_with_personality_preservation(self, original_prompt: str) -> str:
-        """Wrap the operator-provided personality prompt with preservation instructions."""
-        wrapped_prompt: str = f"""IMPORTANT: Maintain the personality and behavior defined below throughout the entire conversation.
-
-{original_prompt.strip()}
-
-Stay consistent with your defined personality regardless of conversation length."""
-
-        return wrapped_prompt
-
     async def get_resolved_personality_prompt(self) -> str:
         """
         Resolve the personality prompt based on priority:
@@ -149,8 +143,7 @@ Stay consistent with your defined personality regardless of conversation length.
             # This should never happen due to the validator, but just in case
             raise ValueError("No personality prompt configuration found")
 
-        # Wrap with personality preservation instructions
-        return self._wrap_with_personality_preservation(original_prompt)
+        return original_prompt
 
     def get_resolved_personality_prompt_sync(self) -> str:
         """Synchronous version of get_resolved_personality_prompt."""

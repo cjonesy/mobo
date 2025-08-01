@@ -1,6 +1,7 @@
 """Discord bot agent using LangChain AgentExecutor."""
 
 import logging
+import textwrap
 from typing import Optional, Dict, Any, IO
 
 import discord
@@ -14,6 +15,7 @@ from ..prompts import create_simple_discord_bot_prompt
 from ..tools import get_all_tools, set_discord_context
 from ..memory import RAGMemory, RAGAgent
 from ..agent.user_profiles import UserProfileManager
+from ..agent.user_profile_agent import UserProfileAgent
 from ..agent.bot_interaction_tracker import BotInteractionTracker
 from ..agent.types import BotResponse
 
@@ -28,6 +30,7 @@ class DiscordAgent:
         self.rag_memory = RAGMemory()
         self.rag_agent = RAGAgent()
         self.user_profile_manager = UserProfileManager()
+        self.user_profile_agent = UserProfileAgent()
         self.bot_interaction_tracker = BotInteractionTracker()
 
         api_key_str = self.config.openai_api_key.get_secret_value()
@@ -84,29 +87,27 @@ class DiscordAgent:
     ) -> str:
         """Build the system prompt with personality, profile, and context."""
         try:
-            personality_prompt = await self.config.get_resolved_personality_prompt()
+            prompt = textwrap.dedent(
+                f"""
+                -- Personality --
+                Your personality is as follows:
+                {await self.config.get_resolved_personality_prompt()}
 
-            # Add user profile context if available
-            profile_context = ""
-            if user_profile:
-                tone = user_profile.get("tone", "neutral")
-                likes = user_profile.get("likes", [])
-                dislikes = user_profile.get("dislikes", [])
+                -- User Profile --
+                The profile of the user you are interacting with is as follows:
+                - They enjoy: {', '.join(user_profile.get("likes", []))}
+                - They dislike: {', '.join(user_profile.get("dislikes", []))}
 
-                parts = [f"Tone: {tone}"]
-                if likes:
-                    parts.append(f"Likes: {', '.join(likes[:3])}")
-                if dislikes:
-                    parts.append(f"Dislikes: {', '.join(dislikes[:3])}")
+                -- RAG Context --
+                The context of the conversation is as follows:
+                {rag_context}
 
-                profile_context = f"\nUser Profile - {', '.join(parts)}"
+                -- Tone --
+                CRITICAL: This user's behavior has earned them a {user_profile.get("tone", "neutral")} response. You MUST respond with {user_profile.get("tone", "neutral")} energy - be {user_profile.get("tone", "neutral")} first, then apply your personality to that {user_profile.get("tone", "neutral")} base.
+                """
+            )
 
-            # Combine all parts
-            system_prompt = f"{personality_prompt}{profile_context}"
-            if rag_context:
-                system_prompt += f"\n{rag_context}"
-
-            return system_prompt
+            return prompt
 
         except Exception as e:
             logger.error(f"Error building system prompt: {e}")
@@ -211,6 +212,26 @@ class DiscordAgent:
                     user_message, response.text, user_id, channel_id
                 )
 
+                # Asynchronously analyze user profile for potential updates
+                # This runs in the background and doesn't block the response
+                try:
+                    profile_result = await self.user_profile_agent.analyze_message(
+                        user_message, user_id, channel_id, user_profile
+                    )
+
+                    if profile_result.update_made:
+                        logger.info(
+                            f"Profile updated for user {user_id}: {profile_result.analysis.reasoning}"
+                        )
+                    else:
+                        logger.debug(
+                            f"No profile update needed for user {user_id}: {profile_result.analysis.reasoning}"
+                        )
+
+                except Exception as e:
+                    logger.error(f"Error in background profile analysis: {e}")
+                    # Don't let profile analysis errors affect the main response
+
             return response
 
         except Exception as e:
@@ -229,4 +250,5 @@ class DiscordAgent:
         await self.rag_memory.close()
         await self.rag_agent.close()
         await self.user_profile_manager.close()
+        await self.user_profile_agent.close()
         await self.bot_interaction_tracker.close()

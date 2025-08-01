@@ -168,7 +168,13 @@ class RAGAgent:
             )
 
             response = await self.llm.ainvoke(formatted_prompt.to_messages())
-            strategy = self.parser.parse(response.content)
+            # Ensure content is a string for parsing
+            content = (
+                response.content
+                if isinstance(response.content, str)
+                else str(response.content)
+            )
+            strategy = self.parser.parse(content)
 
             # Validate and adjust strategy if needed
             strategy.similarity_threshold = max(

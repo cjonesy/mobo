@@ -1,7 +1,6 @@
 """Discord-specific tools for the bot agent."""
 
 import logging
-from typing import Optional
 
 from langchain_core.tools import tool
 
@@ -84,7 +83,7 @@ async def get_current_chat_users() -> str:
 
         try:
             channel = guild.get_channel(int(channel_id))
-        except (ValueError, TypeError) as e:
+        except (ValueError, TypeError):
             return f"ERROR: Invalid channel ID format: {channel_id}"
 
         if not channel:
