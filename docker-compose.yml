@@ -1,32 +1,33 @@
 services:
   postgres:
     image: pgvector/pgvector:pg15
+    container_name: mobo_postgres
     environment:
       POSTGRES_DB: mobo
       POSTGRES_USER: mobo
       POSTGRES_PASSWORD: mobo
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mobo -d mobo"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
       retries: 5
 
   bot:
     build: .
+    container_name: mobo_bot
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - DISCORD_TOKEN=${DISCORD_TOKEN}
       - DATABASE_URL=postgresql+asyncpg://mobo:mobo@postgres:5432/mobo
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
-    volumes:
-      - ./logs:/app/logs
     restart: unless-stopped
+    command: ["mobo", "run"]
 
 volumes:
   postgres_data:

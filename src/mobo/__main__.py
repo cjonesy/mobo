@@ -1,6 +1,4 @@
-"""
-Entry point for running the bot via: python -m mobo
-"""
+"""Entry point for running mobo as a module."""
 
 from .cli import main
 

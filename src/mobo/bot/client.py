@@ -1,127 +1,133 @@
-"""
-Discord client implementation using PydanticAI agents with memory management.
-"""
+"""Discord client implementation using LangGraph agent."""
 
-import discord
 import logging
+import tempfile
+from typing import Any
+import discord
+import httpx
 
-from ..ai import create_discord_agent, process_discord_message
-from ..ai.memory_manager import memory_manager
-from ..utils.config import get_config
+
+from .message_handler import MessageHandler
+from ..config import get_config, Config
 
 logger = logging.getLogger(__name__)
 
-config = get_config()
 
-discord_agent = create_discord_agent()
+class DiscordBot:
+    """Main Discord bot client using LangGraph."""
 
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-client = discord.Client(intents=intents)
+    def __init__(self) -> None:
+        self.config: Config = get_config()
 
+        # Set up Discord intents
+        intents = discord.Intents.default()
+        intents.message_content = True
+        intents.members = True
 
-@client.event
-async def on_ready():
-    """Event handler for when the bot is ready."""
-    if client.user:
-        logger.info(f"🤖 {client.user} has connected to Discord!")
+        self.client: discord.Client = discord.Client(intents=intents)
+        self.message_handler: MessageHandler = MessageHandler()
 
+        # Set up event handlers
+        self._setup_events()
+
+    def _setup_events(self) -> None:
+        """Set up Discord event handlers."""
+
+        @self.client.event
+        async def on_ready() -> None:
+            """Event handler for when the bot is ready."""
+            if self.client.user:
+                logger.info(f"🤖 {self.client.user} has connected to Discord!")
+
+                try:
+                    await self.message_handler.initialize()
+                    logger.info("🧠 LangGraph agent initialized successfully")
+                except Exception as e:
+                    logger.error(f"❌ Failed to initialize agent: {e}")
+
+        @self.client.event
+        async def on_message(message: discord.Message) -> None:
+            """Event handler for incoming Discord messages."""
+            try:
+                # Handle the message through our message handler
+                if self.client.user is None:
+                    logger.error("Bot user is not available")
+                    return
+
+                # Skip bot's own messages immediately
+                if message.author == self.client.user:
+                    return
+
+                # Process message with typing indicator
+                async with message.channel.typing():
+                    response = await self.message_handler.handle_message(
+                        message, self.client.user
+                    )
+
+                # Prepare files and send message
+                if response:
+                    try:
+                        files: list[discord.File] = []
+                        if response.has_files() and response.files is not None:
+                            for bot_file in response.files:
+                                async with httpx.AsyncClient() as client:
+                                    file_response = await client.get(bot_file.url)
+                                    if file_response.status_code == 200:
+                                        temp_file = tempfile.NamedTemporaryFile(
+                                            suffix=".png", delete=False
+                                        )
+                                        temp_file.write(file_response.content)
+                                        temp_file.flush()
+                                        discord_file = discord.File(temp_file.name)
+                                        files.append(discord_file)
+
+                                        # Store temp file for cleanup
+                                        if response._temp_files is None:
+                                            response._temp_files = []
+                                        response._temp_files.append(temp_file)
+
+                        if files:
+                            await message.reply(response.text, files=files)
+                        else:
+                            await message.reply(response.text)
+                    except Exception as e:
+                        logger.error(f"Error sending response: {e}")
+
+                if response and response._temp_files is not None:
+                    for tmp_file in response._temp_files:
+                        tmp_file.close()
+
+            except Exception as e:
+                logger.error(f"Error in on_message: {e}")
+
+        @self.client.event
+        async def on_error(event: str, *args: Any, **kwargs: Any) -> None:
+            """Event handler for Discord client errors."""
+            logger.error(f"Discord client error in {event}: {args} {kwargs}")
+
+    async def start(self) -> None:
+        """Start the Discord bot."""
         try:
-            await memory_manager.initialize_database()
-            logger.info("📊 Database initialized successfully")
+            logger.info("🚀 Starting Discord bot...")
+            await self.client.start(self.config.discord_token.get_secret_value())
         except Exception as e:
-            logger.error(f"❌ Failed to initialize database: {e}")
+            logger.error(f"Failed to start bot: {e}")
+            raise
 
-
-@client.event
-async def on_message(message):
-    """Event handler for incoming Discord messages."""
-    # Ignore messages from the bot itself
-    if message.author == client.user:
-        return
-
-    # Ignore empty messages
-    if not message.content.strip():
-        return
-
-    # Only respond if bot is mentioned or if message is a reply to the bot
-    bot_mentioned = client.user in message.mentions
-    is_reply_to_bot = False
-
-    # Check if this is a reply to the bot
-    if message.reference and message.reference.message_id:
+    async def close(self) -> None:
+        """Close the Discord bot and clean up resources."""
+        logger.info("🛑 Shutting down Discord bot...")
         try:
-            referenced_message = await message.channel.fetch_message(
-                message.reference.message_id
-            )
-            is_reply_to_bot = referenced_message.author == client.user
-        except discord.NotFound:
-            # Referenced message not found, ignore
-            pass
+            await self.message_handler.close()
+            await self.client.close()
+            logger.info("✅ Bot shutdown complete")
         except Exception as e:
-            logger.error(f"Error fetching referenced message: {e}")
+            logger.error(f"Error during shutdown: {e}")
 
-    # If not mentioned and not replying to bot, ignore the message
-    if not bot_mentioned and not is_reply_to_bot:
-        return
-
-    # Bot interaction limit checking
-    is_author_bot = message.author.bot
-    user_id = str(message.author.id)
-
-    # Update bot interaction tracking
-    await memory_manager.update_bot_interaction(user_id, is_author_bot)
-
-    # If this is another bot, check interaction limits
-    if is_author_bot:
-        can_respond, reason = await memory_manager.can_respond_to_bot(user_id)
-        if not can_respond:
-            logger.info(
-                f"🤖 Bot interaction limit reached for {message.author.name} ({user_id}): {reason}"
-            )
-            return
-        else:
-            logger.debug(
-                f"🤖 Bot interaction allowed for {message.author.name} ({user_id}): {reason}"
-            )
-    else:
-        # Human user joined - reset bot interaction counters for this channel
-        await memory_manager.reset_all_bot_interactions(str(message.channel.id))
-        logger.debug(
-            f"👤 Human user {message.author.name} joined conversation - reset bot counters"
-        )
-
-    try:
-        # Show typing indicator while processing
-        async with message.channel.typing():
-            # Get guild ID if in a server, None if in DM
-            guild_id = str(message.guild.id) if message.guild else None
-
-            # Process the message through PydanticAI agent
-            response = await process_discord_message(
-                agent=discord_agent,
-                memory=memory_manager,
-                user_message=message.content,
-                user_id=user_id,
-                channel_id=str(message.channel.id),
-                username=message.author.name,
-                discord_client=client,
-                guild_id=guild_id,
-            )
-
-            if response:
-                await message.reply(response)
-
-    except Exception as e:
-        logger.error(f"Error handling message: {e}")
-        await message.reply("Sorry, I encountered an error processing your message.")
-
-
-def run_bot():
-    """Run the Discord bot."""
-    try:
-        client.run(config.discord_token.get_secret_value())
-    except Exception as e:
-        logger.error(f"Failed to start bot: {e}")
-        raise
+    def run(self) -> None:
+        """Run the Discord bot (blocking)."""
+        try:
+            self.client.run(self.config.discord_token.get_secret_value())
+        except Exception as e:
+            logger.error(f"Failed to run bot: {e}")
+            raise

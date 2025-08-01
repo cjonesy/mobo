@@ -16,22 +16,25 @@ dev:
     @echo "🐘 Starting PostgreSQL in Docker..."
     docker-compose up -d postgres
     @echo "⏳ Waiting for PostgreSQL to be ready..."
-    @for i in {1..30}; do \
+    @i=1; while [ $i -le 30 ]; do \
         if docker-compose exec postgres pg_isready -U mobo >/dev/null 2>&1; then \
             echo "✅ PostgreSQL ready!"; \
             break; \
         fi; \
-        if [ $$i -eq 30 ]; then \
+        if [ $i -eq 30 ]; then \
             echo "❌ PostgreSQL failed to start after 30 seconds"; \
             echo "🔍 Checking logs:"; \
             docker-compose logs postgres; \
             exit 1; \
         fi; \
-        echo "  Attempt $$i/30..."; \
+        echo "  Attempt $i/30..."; \
         sleep 1; \
+        i=$((i+1)); \
     done
+    @echo "🗄️ Initializing database schema..."
+    uv run python -m src.mobo init-db
     @echo "🤖 Starting Discord bot locally..."
-    uv run python -m src.mobo
+    uv run python -m src.mobo run
 
 # Stop development environment
 dev-stop:
@@ -58,16 +61,6 @@ dev-reset:
     docker volume rm mobo_postgres_data 2>/dev/null || true
     @echo "✅ Database reset complete. Run 'just dev' to start fresh."
 
-# Run database migrations
-migrate:
-    @echo "🔄 Running database migrations..."
-    uv run alembic upgrade head
-
-# Create a new database migration
-migrate-create NAME:
-    @echo "📝 Creating new migration: {{NAME}}"
-    uv run alembic revision --autogenerate -m "{{NAME}}"
-
 # === SETUP & INSTALLATION ===
 
 # Install UV dependency manager
@@ -83,7 +76,7 @@ install:
 # Run the bot locally (assumes external database)
 run:
     @echo "🤖 Starting Discord bot locally..."
-    uv run python -m src.mobo
+    uv run python -m src.mobo run
 
 # === TESTING & QUALITY ===
 
@@ -99,7 +92,7 @@ test:
 # Lint code
 lint:
     @echo "🔍 Linting code..."
-    uv run ruff check src/
+    uv run ruff check --fix src/
 
 # Format code
 format:
