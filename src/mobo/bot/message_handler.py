@@ -107,16 +107,6 @@ class MessageHandler:
             BotResponse if the bot should respond, None otherwise
         """
         try:
-            # Check if we should respond
-            should_respond: bool
-            reason: str
-            should_respond, reason = await self.should_respond(message, bot_user)
-            if not should_respond:
-                logger.debug(
-                    f"Not responding to message from {message.author.name}: {reason}"
-                )
-                return None
-
             logger.info(
                 f"Processing message from {message.author.name}: {message.content[:100]}"
             )

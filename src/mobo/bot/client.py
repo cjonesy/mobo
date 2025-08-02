@@ -58,7 +58,17 @@ class DiscordBot:
                 if message.author == self.client.user:
                     return
 
-                # Process message with typing indicator
+                # Check if we should respond before starting typing indicator
+                should_respond, reason = await self.message_handler.should_respond(
+                    message, self.client.user
+                )
+                if not should_respond:
+                    logger.debug(
+                        f"Not responding to message from {message.author.name}: {reason}"
+                    )
+                    return
+
+                # Only start typing if we're going to respond
                 async with message.channel.typing():
                     response = await self.message_handler.handle_message(
                         message, self.client.user
