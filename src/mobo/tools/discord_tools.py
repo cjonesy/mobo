@@ -56,9 +56,11 @@ async def get_current_chat_users() -> str:
     """Get list of users currently active in the chat channel.
 
     Automatically uses the current channel from the Discord context.
+    Returns both display names and user IDs for each user.
 
     Returns:
-        List of active users in the channel
+        List of active users with format "DisplayName (ID: user_id)"
+        Use the numeric user_id with mention_user() to create mentions.
     """
     try:
         logger.info("Called get_current_chat_users")
@@ -95,9 +97,9 @@ async def get_current_chat_users() -> str:
         for member in guild.members:
             if channel.permissions_for(member).view_channel:
                 if member.bot:
-                    bots.append(member.display_name)
+                    bots.append(f"{member.display_name} (ID: {member.id})")
                 else:
-                    humans.append(member.display_name)
+                    humans.append(f"{member.display_name} (ID: {member.id})")
 
         if not humans and not bots:
             return "RESULT: No users found in channel"
@@ -122,6 +124,38 @@ async def get_current_chat_users() -> str:
     except Exception as e:
         logger.error(f"Error getting chat users: {e}")
         return f"ERROR: Failed to get user list: {str(e)}"
+
+
+@tool
+async def get_user_id_by_name(display_name: str) -> str:
+    """Get a Discord user ID by their display name.
+
+    Args:
+        display_name: The display name of the user to find
+
+    Returns:
+        The numeric user ID for use with mention_user(), or error message
+    """
+    try:
+        logger.info(f"Called get_user_id_by_name with display_name: {display_name}")
+        discord_context = get_discord_context()
+        if not discord_context or not discord_context.get("guild_member"):
+            return "ERROR: Discord context not available"
+
+        guild_member = discord_context["guild_member"]
+        guild = guild_member.guild
+
+        # Search for member by display name (case insensitive)
+        for member in guild.members:
+            if member.display_name.lower() == display_name.lower():
+                logger.info(f"Found user {display_name} with ID: {member.id}")
+                return str(member.id)
+
+        return f"ERROR: User '{display_name}' not found in server"
+
+    except Exception as e:
+        logger.error(f"Error finding user by name: {e}")
+        return f"ERROR: Failed to find user: {str(e)}"
 
 
 @tool
