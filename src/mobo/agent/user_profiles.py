@@ -44,10 +44,20 @@ class UserProfileManager:
                     tone TEXT DEFAULT 'casual',
                     likes TEXT[] DEFAULT '{}',
                     dislikes TEXT[] DEFAULT '{}',
+                    aliases TEXT[] DEFAULT '{}',
                     custom_tags JSONB DEFAULT '{}',
                     created_at TIMESTAMP DEFAULT now(),
                     updated_at TIMESTAMP DEFAULT now()
                 )
+            """
+                )
+            )
+            # Add aliases column if it doesn't exist (migration)
+            await conn.execute(
+                text(
+                    """
+                ALTER TABLE user_profiles
+                ADD COLUMN IF NOT EXISTS aliases TEXT[] DEFAULT '{}'
             """
                 )
             )
@@ -59,7 +69,7 @@ class UserProfileManager:
                 result = await session.execute(
                     text(
                         """
-                        SELECT user_id, tone, likes, dislikes, custom_tags, created_at, updated_at
+                        SELECT user_id, tone, likes, dislikes, aliases, custom_tags, created_at, updated_at
                         FROM user_profiles
                         WHERE user_id = :user_id
                     """
@@ -79,6 +89,7 @@ class UserProfileManager:
                         "tone": "casual",
                         "likes": [],
                         "dislikes": [],
+                        "aliases": [],
                         "custom_tags": {},
                         "created_at": datetime.now(timezone.utc),
                         "updated_at": datetime.now(timezone.utc),
@@ -89,6 +100,7 @@ class UserProfileManager:
                     "tone": row.tone,
                     "likes": list(row.likes) if row.likes else [],
                     "dislikes": list(row.dislikes) if row.dislikes else [],
+                    "aliases": list(row.aliases) if row.aliases else [],
                     "custom_tags": dict(row.custom_tags) if row.custom_tags else {},
                     "created_at": row.created_at,
                     "updated_at": row.updated_at,
@@ -102,6 +114,7 @@ class UserProfileManager:
                 "tone": "casual",
                 "likes": [],
                 "dislikes": [],
+                "aliases": [],
                 "custom_tags": {},
                 "created_at": datetime.now(timezone.utc),
                 "updated_at": datetime.now(timezone.utc),
@@ -114,8 +127,8 @@ class UserProfileManager:
                 await session.execute(
                     text(
                         """
-                        INSERT INTO user_profiles (user_id, tone, likes, dislikes, custom_tags)
-                        VALUES (:user_id, 'casual', '{}', '{}', '{}')
+                        INSERT INTO user_profiles (user_id, tone, likes, dislikes, aliases, custom_tags)
+                        VALUES (:user_id, 'casual', '{}', '{}', '{}', '{}')
                         ON CONFLICT (user_id) DO NOTHING
                     """
                     ),
@@ -231,6 +244,89 @@ class UserProfileManager:
         except Exception as e:
             logger.error(f"Failed to remove dislikes for user {user_id}: {e}")
 
+    async def add_user_aliases(self, user_id: str, aliases: list[str]) -> None:
+        """Add aliases to user's aliases list."""
+        try:
+            async with self.async_session() as session:
+                await session.execute(
+                    text(
+                        """
+                        UPDATE user_profiles
+                        SET aliases = array(SELECT DISTINCT unnest(aliases || :aliases)),
+                            updated_at = now()
+                        WHERE user_id = :user_id
+                    """
+                    ),
+                    {"user_id": user_id, "aliases": aliases},
+                )
+                await session.commit()
+                logger.debug(f"Added aliases for user {user_id}: {aliases}")
+
+        except Exception as e:
+            logger.error(f"Failed to add aliases for user {user_id}: {e}")
+
+    async def remove_user_aliases(self, user_id: str, aliases: list[str]) -> None:
+        """Remove aliases from user's aliases list."""
+        try:
+            async with self.async_session() as session:
+                await session.execute(
+                    text(
+                        """
+                        UPDATE user_profiles
+                        SET aliases = array(SELECT unnest(aliases) EXCEPT SELECT unnest(:aliases)),
+                            updated_at = now()
+                        WHERE user_id = :user_id
+                    """
+                    ),
+                    {"user_id": user_id, "aliases": aliases},
+                )
+                await session.commit()
+                logger.debug(f"Removed aliases for user {user_id}: {aliases}")
+
+        except Exception as e:
+            logger.error(f"Failed to remove aliases for user {user_id}: {e}")
+
+    async def set_user_aliases(self, user_id: str, aliases: list[str]) -> None:
+        """Set user's aliases list, replacing any existing aliases."""
+        try:
+            async with self.async_session() as session:
+                await session.execute(
+                    text(
+                        """
+                        UPDATE user_profiles
+                        SET aliases = :aliases,
+                            updated_at = now()
+                        WHERE user_id = :user_id
+                    """
+                    ),
+                    {"user_id": user_id, "aliases": aliases},
+                )
+                await session.commit()
+                logger.debug(f"Set aliases for user {user_id}: {aliases}")
+
+        except Exception as e:
+            logger.error(f"Failed to set aliases for user {user_id}: {e}")
+
+    async def get_user_by_alias(self, alias: str) -> str | None:
+        """Get user ID by alias. Returns None if alias not found."""
+        try:
+            async with self.async_session() as session:
+                result = await session.execute(
+                    text(
+                        """
+                        SELECT user_id FROM user_profiles
+                        WHERE :alias = ANY(aliases)
+                    """
+                    ),
+                    {"alias": alias},
+                )
+                row = result.fetchone()
+                return row.user_id if row else None
+
+        except Exception as e:
+            logger.error(f"Failed to get user by alias {alias}: {e}")
+            return None
+
     async def update_custom_tags(self, user_id: str, tags: dict[str, Any]) -> None:
         """Update user's custom tags (merge with existing)."""
         try:
@@ -272,13 +368,15 @@ class UserProfileManager:
         tone = profile.get("tone", "neutral")
         likes = profile.get("likes", [])
         dislikes = profile.get("dislikes", [])
+        aliases = profile.get("aliases", [])
 
-        return f"Tone: {tone}, Likes: {likes}, Dislikes: {dislikes}"
+        return f"Tone: {tone}, Likes: {likes}, Dislikes: {dislikes}, Aliases: {aliases}"
 
     def format_profile_for_prompt(self, profile: dict[str, Any]) -> str:
         """Format user profile for system prompt display."""
         likes = profile.get("likes", [])
         dislikes = profile.get("dislikes", [])
+        aliases = profile.get("aliases", [])
 
         parts = []
         if likes:
@@ -290,6 +388,11 @@ class UserProfileManager:
             parts.append(f"- They dislike: {', '.join(dislikes)}")
         else:
             parts.append("- They dislike: ")
+
+        if aliases:
+            parts.append(f"- Known aliases/preferred names: {', '.join(aliases)}")
+        else:
+            parts.append("- Known aliases/preferred names: ")
 
         return "\n                  ".join(parts)
 
