@@ -268,8 +268,18 @@ class RAGAgent:
         context = "Recent conversation context:\n"
         for msg in messages:
             role = msg.get("role", "unknown")
+            user_id = msg.get("user_id", "")
             content = msg.get("content", "")
-            context += f"- {role}: {content}\n"
+
+            # Format with user identification for clarity
+            if role == "user" and user_id:
+                speaker = f"user_{user_id}"
+            elif role == "assistant":
+                speaker = "assistant"
+            else:
+                speaker = role
+
+            context += f"- {speaker}: {content}\n"
 
         return context
 
