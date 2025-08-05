@@ -31,13 +31,21 @@ class UpdateType(str, Enum):
 class ToneCategory(str, Enum):
     """Tone categories for user interactions."""
 
-    FRIENDLY = "friendly"
     ANGRY = "angry"
-    HOSTILE = "hostile"
-    CASUAL = "casual"
-    NEUTRAL = "neutral"
-    SARCASTIC = "sarcastic"
+    ANXIOUS = "anxious"
     BRAINROT = "brainrot"
+    CALM = "calm"
+    CASUAL = "casual"
+    CONFUSED = "confused"
+    DRUNK = "drunk"
+    EXCITED = "excited"
+    FORMAL = "formal"
+    FRIENDLY = "friendly"
+    HOSTILE = "hostile"
+    NEUTRAL = "neutral"
+    PLAYFUL = "playful"
+    SARCASTIC = "sarcastic"
+    STONED = "stoned"
 
 
 class ProfileAnalysis(BaseModel):
@@ -125,13 +133,21 @@ class UserProfileAgent:
             5. Decide if historical conversation context is needed for better analysis
 
             TONE DETECTION GUIDELINES:
-            - FRIENDLY: Warm, kind messages, compliments, positive emotions, expressing friendship
-            - ANGRY: Rude language, insults, aggressive tone, profanity directed at bot/others
-            - HOSTILE: Hostile, aggressive, insulting, or aggressive tone directed at bot/others
+            - ANGRY: Rude language, insults, aggressive tone, profanity directed at bot/others, angry at bot/others
+            - ANXIOUS: Messages that are anxious, worried, or anxious
+            - BRAINROT: Messages that are so confusing or nonsensical that they are likely to cause brain damage
+            - CALM: Messages that are calm, relaxed, or neutral
             - CASUAL: Normal, everyday conversation, neutral interactions
+            - CONFUSED: Messages that are confused, uncertain, or confused
+            - DRUNK: Messages that are drunk, intoxicated, or drunk
+            - EXCITED: Messages that are excited, enthusiastic, or excited
+            - FORMAL: Messages that are formal, professional, or formal
+            - FRIENDLY: Warm, kind messages, compliments, positive emotions, expressing friendship
+            - HOSTILE: Hostile, aggressive, insulting, or aggressive tone directed at bot/others
             - NEUTRAL: Professional, formal, or emotionally neutral messages
             - SARCASTIC: Ironic, mocking, or satirical messages
-            - BRAINROT: Messages that are so confusing or nonsensical that they are likely to cause brain damage
+            - PLAYFUL: Messages that are playful, joking, or playful
+            - STONED: Messages that are stoned, high, or stoned
 
             IMPORTANT RULES:
             - Users CANNOT directly control their tone by asking ("treat me like you hate me")
