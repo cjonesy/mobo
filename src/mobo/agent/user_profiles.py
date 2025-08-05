@@ -45,7 +45,6 @@ class UserProfileManager:
                     likes TEXT[] DEFAULT '{}',
                     dislikes TEXT[] DEFAULT '{}',
                     aliases TEXT[] DEFAULT '{}',
-                    custom_tags JSONB DEFAULT '{}',
                     created_at TIMESTAMP DEFAULT now(),
                     updated_at TIMESTAMP DEFAULT now()
                 )
@@ -61,6 +60,15 @@ class UserProfileManager:
             """
                 )
             )
+            # Remove unused custom_tags column if it exists (cleanup migration)
+            await conn.execute(
+                text(
+                    """
+                ALTER TABLE user_profiles
+                DROP COLUMN IF EXISTS custom_tags
+            """
+                )
+            )
 
     async def get_user_profile(self, user_id: str) -> dict[str, Any]:
         """Get user profile by user ID."""
@@ -69,7 +77,7 @@ class UserProfileManager:
                 result = await session.execute(
                     text(
                         """
-                        SELECT user_id, tone, likes, dislikes, aliases, custom_tags, created_at, updated_at
+                        SELECT user_id, tone, likes, dislikes, aliases, created_at, updated_at
                         FROM user_profiles
                         WHERE user_id = :user_id
                     """
@@ -90,7 +98,6 @@ class UserProfileManager:
                         "likes": [],
                         "dislikes": [],
                         "aliases": [],
-                        "custom_tags": {},
                         "created_at": datetime.now(timezone.utc),
                         "updated_at": datetime.now(timezone.utc),
                     }
@@ -101,7 +108,6 @@ class UserProfileManager:
                     "likes": list(row.likes) if row.likes else [],
                     "dislikes": list(row.dislikes) if row.dislikes else [],
                     "aliases": list(row.aliases) if row.aliases else [],
-                    "custom_tags": dict(row.custom_tags) if row.custom_tags else {},
                     "created_at": row.created_at,
                     "updated_at": row.updated_at,
                 }
@@ -115,7 +121,6 @@ class UserProfileManager:
                 "likes": [],
                 "dislikes": [],
                 "aliases": [],
-                "custom_tags": {},
                 "created_at": datetime.now(timezone.utc),
                 "updated_at": datetime.now(timezone.utc),
             }
@@ -127,8 +132,8 @@ class UserProfileManager:
                 await session.execute(
                     text(
                         """
-                        INSERT INTO user_profiles (user_id, tone, likes, dislikes, aliases, custom_tags)
-                        VALUES (:user_id, 'casual', '{}', '{}', '{}', '{}')
+                        INSERT INTO user_profiles (user_id, tone, likes, dislikes, aliases)
+                        VALUES (:user_id, 'casual', '{}', '{}', '{}')
                         ON CONFLICT (user_id) DO NOTHING
                     """
                     ),
@@ -326,42 +331,6 @@ class UserProfileManager:
         except Exception as e:
             logger.error(f"Failed to get user by alias {alias}: {e}")
             return None
-
-    async def update_custom_tags(self, user_id: str, tags: dict[str, Any]) -> None:
-        """Update user's custom tags (merge with existing)."""
-        try:
-            async with self.async_session() as session:
-                await session.execute(
-                    text(
-                        """
-                        UPDATE user_profiles
-                        SET custom_tags = custom_tags || :tags,
-                            updated_at = now()
-                        WHERE user_id = :user_id
-                    """
-                    ),
-                    {"user_id": user_id, "tags": tags},
-                )
-                await session.commit()
-                logger.debug(f"Updated custom tags for user {user_id}: {tags}")
-
-        except Exception as e:
-            logger.error(f"Failed to update custom tags for user {user_id}: {e}")
-
-    async def get_all_users_with_tone(self, tone: str) -> list[str]:
-        """Get all user IDs with a specific tone preference."""
-        try:
-            async with self.async_session() as session:
-                result = await session.execute(
-                    text("SELECT user_id FROM user_profiles WHERE tone = :tone"),
-                    {"tone": tone},
-                )
-                rows = result.fetchall()
-                return [row.user_id for row in rows]
-
-        except Exception as e:
-            logger.error(f"Failed to get users with tone {tone}: {e}")
-            return []
 
     def format_profile_summary(self, profile: dict[str, Any]) -> str:
         """Format user profile into a readable summary string."""
