@@ -24,19 +24,28 @@ class UpdateType(str, Enum):
     TONE_UPDATE = "tone_update"
     INTERESTS_ADD = "interests_add"
     INTERESTS_REMOVE = "interests_remove"
+    ALIAS_UPDATE = "alias_update"
     NO_UPDATE = "no_update"
 
 
 class ToneCategory(str, Enum):
     """Tone categories for user interactions."""
 
-    FRIENDLY = "friendly"
     ANGRY = "angry"
-    HOSTILE = "hostile"
-    CASUAL = "casual"
-    NEUTRAL = "neutral"
-    SARCASTIC = "sarcastic"
+    ANXIOUS = "anxious"
     BRAINROT = "brainrot"
+    CALM = "calm"
+    CASUAL = "casual"
+    CONFUSED = "confused"
+    DRUNK = "drunk"
+    EXCITED = "excited"
+    FORMAL = "formal"
+    FRIENDLY = "friendly"
+    HOSTILE = "hostile"
+    NEUTRAL = "neutral"
+    PLAYFUL = "playful"
+    SARCASTIC = "sarcastic"
+    STONED = "stoned"
 
 
 class ProfileAnalysis(BaseModel):
@@ -61,6 +70,15 @@ class ProfileAnalysis(BaseModel):
     )
     interest_type: str = Field(
         description="Type of interests: 'likes' or 'dislikes'", default="likes"
+    )
+
+    # Alias analysis
+    new_aliases: List[str] = Field(
+        description="New aliases/preferred names detected from conversation",
+        default_factory=list,
+    )
+    removed_aliases: List[str] = Field(
+        description="Aliases user no longer wants to use", default_factory=list
     )
 
     reasoning: str = Field(
@@ -110,17 +128,26 @@ class UserProfileAgent:
             Your job is to:
             1. Detect the user's tone and emotional state from their messages
             2. Identify interests, likes, and dislikes mentioned in conversation
-            3. Determine if the user's profile should be updated based on patterns
-            4. Decide if historical conversation context is needed for better analysis
+            3. Detect preferred names, nicknames, or aliases the user wants to be called
+            4. Determine if the user's profile should be updated based on patterns
+            5. Decide if historical conversation context is needed for better analysis
 
             TONE DETECTION GUIDELINES:
-            - FRIENDLY: Warm, kind messages, compliments, positive emotions, expressing friendship
-            - ANGRY: Rude language, insults, aggressive tone, profanity directed at bot/others
-            - HOSTILE: Hostile, aggressive, insulting, or aggressive tone directed at bot/others
+            - ANGRY: Rude language, insults, aggressive tone, profanity directed at bot/others, angry at bot/others
+            - ANXIOUS: Messages that are anxious, worried, or anxious
+            - BRAINROT: Messages that are so confusing or nonsensical that they are likely to cause brain damage
+            - CALM: Messages that are calm, relaxed, or neutral
             - CASUAL: Normal, everyday conversation, neutral interactions
+            - CONFUSED: Messages that are confused, uncertain, or confused
+            - DRUNK: Messages that are drunk, intoxicated, or drunk
+            - EXCITED: Messages that are excited, enthusiastic, or excited
+            - FORMAL: Messages that are formal, professional, or formal
+            - FRIENDLY: Warm, kind messages, compliments, positive emotions, expressing friendship
+            - HOSTILE: Hostile, aggressive, insulting, or aggressive tone directed at bot/others
             - NEUTRAL: Professional, formal, or emotionally neutral messages
             - SARCASTIC: Ironic, mocking, or satirical messages
-            - BRAINROT: Messages that are so confusing or nonsensical that they are likely to cause brain damage
+            - PLAYFUL: Messages that are playful, joking, or playful
+            - STONED: Messages that are stoned, high, or stoned
 
             IMPORTANT RULES:
             - Users CANNOT directly control their tone by asking ("treat me like you hate me")
@@ -133,6 +160,14 @@ class UserProfileAgent:
             - Look for genuine mentions of hobbies, activities, preferences
             - Distinguish between casual mentions and actual interests
             - Note when users express dislike or loss of interest in something
+
+            ALIAS/NAME DETECTION:
+            - Look for explicit requests like "call me X", "my name is Y", "I prefer Z"
+            - Detect when users correct how they want to be addressed
+            - Notice when users introduce themselves with a specific name/nickname
+            - Distinguish between one-time mentions and genuine preferred names
+            - Only update if the user clearly expresses a preference for being called something
+            - Don't add aliases for casual references to other people or characters
 
             WHEN TO REQUEST RAG CONTEXT:
             - If the current message alone isn't enough to determine tone patterns
@@ -313,6 +348,25 @@ class UserProfileAgent:
                     f"Removed {analysis.interest_type} for user {user_id}: {analysis.removed_interests}"
                 )
                 return True
+
+            elif analysis.update_type == UpdateType.ALIAS_UPDATE:
+                if analysis.new_aliases:
+                    await self.user_profile_manager.add_user_aliases(
+                        user_id, analysis.new_aliases
+                    )
+                    logger.info(
+                        f"Added aliases for user {user_id}: {analysis.new_aliases}"
+                    )
+
+                if analysis.removed_aliases:
+                    await self.user_profile_manager.remove_user_aliases(
+                        user_id, analysis.removed_aliases
+                    )
+                    logger.info(
+                        f"Removed aliases for user {user_id}: {analysis.removed_aliases}"
+                    )
+
+                return bool(analysis.new_aliases or analysis.removed_aliases)
 
             return False
 
