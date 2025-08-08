@@ -108,6 +108,9 @@ class DiscordAgent:
 
                 -- Tone --
                 CRITICAL: This user's behavior has earned them a {user_profile.get("tone", "neutral")} response. You MUST respond with {user_profile.get("tone", "neutral")} energy - be {user_profile.get("tone", "neutral")} first, then apply your personality to that {user_profile.get("tone", "neutral")} base.
+
+                -- Response Length --
+                IMPORTANT: NEVER respond with more than 2000 characters.
                 """
             )
 
