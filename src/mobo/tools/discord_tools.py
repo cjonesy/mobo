@@ -5,6 +5,7 @@ import logging
 from langchain_core.tools import tool
 
 from .context import get_discord_context
+from ..config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -203,3 +204,74 @@ async def mention_message_author() -> str:
     except Exception as e:
         logger.error(f"Error mentioning message author: {e}")
         return f"ERROR: Failed to mention author: {str(e)}"
+
+
+@tool
+async def generate_and_set_profile_picture(prompt: str) -> str:
+    """Generate a new profile picture with DALL·E and set it as the bot's server avatar.
+
+    This updates the bot's avatar for the current server (guild) using public APIs only.
+    Provide a concise, visual style prompt. Prefer centered, simple compositions.
+
+    Args:
+        prompt: Description of the avatar to generate.
+
+    Returns:
+        Status message about the operation.
+    """
+    try:
+        logger.info(f"Called generate_and_set_profile_picture with prompt: {prompt}")
+
+        discord_context = get_discord_context()
+        if not discord_context:
+            return "ERROR: Discord context not available"
+
+        guild_member = discord_context.get("guild_member")
+        if guild_member is None:
+            return "ERROR: Bot user context not available to change avatar"
+
+        # Generate an image via OpenAI Images API
+        config = get_config()
+        from openai import AsyncOpenAI
+        import httpx
+
+        client = AsyncOpenAI(api_key=config.openai_api_key.get_secret_value())
+
+        # Prefer a square image for avatars
+        try:
+            response = await client.images.generate(
+                model=config.image_model,
+                prompt=prompt,
+                size="1024x1024",
+                quality="standard",
+                n=1,
+            )
+            image_url = (
+                response.data[0].url if response.data and response.data[0].url else None
+            )
+        except Exception as gen_err:
+            logger.error(f"Image generation failed: {gen_err}")
+            image_url = None
+
+        if not image_url:
+            return "ERROR: Image generation failed"
+
+        logger.info(f"Downloading generated avatar from {image_url}")
+        async with httpx.AsyncClient() as http_client:
+            img_resp = await http_client.get(image_url)
+            if img_resp.status_code != 200:
+                return "ERROR: Failed to download generated image"
+            image_bytes = img_resp.content
+
+        # Update the bot's server (guild) avatar using Member.edit (public API)
+        try:
+            await guild_member.edit(avatar=image_bytes)
+            logger.info("Successfully updated server avatar")
+            return "Updated server profile picture."
+        except Exception as avatar_err:
+            logger.error(f"Failed to set server avatar: {avatar_err}")
+            return f"ERROR: Failed to set server avatar: {avatar_err}"
+
+    except Exception as e:
+        logger.error(f"Error generating and setting profile picture: {e}")
+        return f"ERROR: {str(e)}"
