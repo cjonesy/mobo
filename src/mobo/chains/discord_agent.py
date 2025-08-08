@@ -178,12 +178,15 @@ class DiscordAgent:
         discord_client: Optional[discord.Member] = None,
         guild_id: Optional[str] = None,
         temp_file: Optional[IO[bytes]] = None,
+        client_user: Optional[discord.ClientUser] = None,
     ) -> Optional[BotResponse]:
         """Process a message through the LangChain agent."""
         try:
             # Set Discord context for tools
             if discord_client:
-                set_discord_context(discord_client, guild_id, channel_id, user_id)
+                set_discord_context(
+                    discord_client, guild_id, channel_id, user_id, client_user
+                )
 
             # Get context and user profile
             user_profile, rag_context = await self._get_context_and_profile(

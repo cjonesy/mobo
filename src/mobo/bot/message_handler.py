@@ -158,6 +158,7 @@ class MessageHandler:
                 channel_id=channel_id,
                 discord_client=message.guild.me if message.guild else None,
                 guild_id=guild_id,
+                client_user=bot_user,
             )
 
             logger.info(
