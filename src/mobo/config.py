@@ -35,6 +35,9 @@ class Config(BaseSettings):
     )
     embedding_model: str = "text-embedding-3-small"
 
+    # Giphy Configuration
+    giphy_api_key: SecretStr = Field(default=SecretStr(""), description="Giphy API key")
+
     # Image Generation
     image_model: str = "dall-e-3"
     image_size: Literal[

@@ -9,6 +9,7 @@ from .discord_tools import (
 )
 from .image_generation import generate_image
 from .context import set_discord_context, get_discord_context
+from .giphy_tools import SearchGiphyTool
 
 # Export all tools for easy access
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     "generate_image",
     "set_discord_context",
     "get_discord_context",
+    "SearchGiphyTool",
 ]
 
 
@@ -32,4 +34,5 @@ def get_all_tools():
         get_current_chat_users,
         mention_user,
         mention_message_author,
+        SearchGiphyTool(),
     ]
