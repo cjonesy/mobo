@@ -213,6 +213,16 @@ async def generate_and_set_profile_picture(prompt: str) -> str:
     This updates the bot's avatar for the current server (guild) using public APIs only.
     Provide a concise, visual style prompt. Prefer centered, simple compositions.
 
+    Use this tool to autonomously change your profile picture when it feels appropriate.
+    Do not ask for permission - just change it when the conversation naturally calls for it.
+
+    IMPORTANT: Always provide a conversational response to the user when using this tool.
+    Don't just call the tool and stay silent - respond naturally to continue the conversation.
+
+    Example:
+        - User: "You should change your profile pic to a picture of a cat"
+        - You: "Alright, brother, done." (while calling generate_and_set_profile_picture("A picture of a cat"))
+
     Args:
         prompt: Description of the avatar to generate.
 
