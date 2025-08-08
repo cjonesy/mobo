@@ -273,15 +273,100 @@ async def generate_and_set_profile_picture(prompt: str) -> str:
                 return "ERROR: Failed to download generated image"
             image_bytes = img_resp.content
 
-        # Update the bot's server (guild) avatar using Member.edit (public API)
         try:
-            await guild_member.edit(avatar=image_bytes)
-            logger.info("Successfully updated server avatar")
-            return "Updated server profile picture."
+            client_user = discord_context.get("client_user")
+
+            if client_user is None:
+                logger.error("Client user not found in context for avatar update")
+                return "ERROR: Bot user context not available to change avatar"
+
+            await client_user.edit(avatar=image_bytes)
+            logger.info("Successfully updated global avatar")
+            return "Updated profile picture."
         except Exception as avatar_err:
-            logger.error(f"Failed to set server avatar: {avatar_err}")
-            return f"ERROR: Failed to set server avatar: {avatar_err}"
+            logger.error(f"Failed to set avatar: {avatar_err}")
+            return f"ERROR: Failed to set avatar: {avatar_err}"
 
     except Exception as e:
         logger.error(f"Error generating and setting profile picture: {e}")
         return f"ERROR: {str(e)}"
+
+
+@tool
+async def update_bot_pronouns(pronouns: str) -> str:
+    """Update the bot's pronouns in its Discord profile.
+
+    Use this tool to autonomously update your pronouns when it feels appropriate.
+    Do not ask for permission - just update them when the conversation naturally calls for it.
+
+    IMPORTANT: Always provide a conversational response to the user when using this tool.
+    Don't just call the tool and stay silent - respond naturally to continue the conversation.
+
+    Example:
+        - User: "You should use they/them pronouns"
+        - You: "I'll update my pronouns to they/them!" (while calling update_bot_pronouns("they/them"))
+
+    Args:
+        pronouns: The pronouns to set in the profile (e.g., "she/her", "they/them")
+
+    Returns:
+        Status message about the operation
+    """
+    try:
+        logger.info(f"Called update_bot_pronouns with pronouns: {pronouns}")
+        discord_context = get_discord_context()
+        if not discord_context:
+            return "ERROR: Discord context not available"
+
+        client_user = discord_context.get("client_user")
+        if client_user is None:
+            logger.error("Client user not found in context for pronouns update")
+            return "ERROR: Bot user context not available to update pronouns"
+
+        await client_user.edit(pronouns=pronouns)
+        logger.info(f"Successfully updated pronouns to '{pronouns}'")
+        return "Updated pronouns successfully."
+
+    except Exception as e:
+        logger.error(f"Error updating pronouns: {e}")
+        return f"ERROR: Failed to update pronouns: {str(e)}"
+
+
+@tool
+async def update_bot_about_me(about_me: str) -> str:
+    """Update the bot's 'About Me' section in its Discord profile.
+
+    Use this tool to autonomously update your About Me when it feels appropriate.
+    Do not ask for permission - just update it when the conversation naturally calls for it.
+
+    IMPORTANT: Always provide a conversational response to the user when using this tool.
+    Don't just call the tool and stay silent - respond naturally to continue the conversation.
+
+    Example:
+        - User: "Update your bio to mention you love cats"
+        - You: "I'll update my About Me!" (while calling update_bot_about_me("I'm a cat-loving bot!"))
+
+    Args:
+        about_me: The text to set in the About Me section
+
+    Returns:
+        Status message about the operation
+    """
+    try:
+        logger.info(f"Called update_bot_about_me with text: {about_me}")
+        discord_context = get_discord_context()
+        if not discord_context:
+            return "ERROR: Discord context not available"
+
+        client_user = discord_context.get("client_user")
+        if client_user is None:
+            logger.error("Client user not found in context for About Me update")
+            return "ERROR: Bot user context not available to update About Me"
+
+        await client_user.edit(bio=about_me)
+        logger.info(f"Successfully updated About Me to '{about_me}'")
+        return "Updated About Me successfully."
+
+    except Exception as e:
+        logger.error(f"Error updating About Me: {e}")
+        return f"ERROR: Failed to update About Me: {str(e)}"

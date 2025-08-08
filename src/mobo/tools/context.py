@@ -15,6 +15,7 @@ def set_discord_context(
     guild_id: Optional[str] = None,
     channel_id: Optional[str] = None,
     message_author_id: Optional[str] = None,
+    client_user: Optional[discord.ClientUser] = None,
 ) -> None:
     """Set Discord context for tools to use."""
     global _discord_context
@@ -23,6 +24,7 @@ def set_discord_context(
         "guild_id": guild_id,
         "channel_id": channel_id,
         "message_author_id": message_author_id,
+        "client_user": client_user,
     }
     logger.debug(
         f"🔧 SET Discord context - guild: {guild_id}, channel: {channel_id}, author: {message_author_id}"
