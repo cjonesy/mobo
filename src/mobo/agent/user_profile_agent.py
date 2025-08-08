@@ -24,7 +24,8 @@ class UpdateType(str, Enum):
     TONE_UPDATE = "tone_update"
     INTERESTS_ADD = "interests_add"
     INTERESTS_REMOVE = "interests_remove"
-    ALIAS_UPDATE = "alias_update"
+    ALIAS_ADD = "alias_add"
+    ALIAS_REMOVE = "alias_remove"
     NO_UPDATE = "no_update"
 
 
@@ -37,7 +38,6 @@ class ToneCategory(str, Enum):
     CALM = "calm"
     CASUAL = "casual"
     CONFUSED = "confused"
-    DRUNK = "drunk"
     EXCITED = "excited"
     FORMAL = "formal"
     FRIENDLY = "friendly"
@@ -45,7 +45,6 @@ class ToneCategory(str, Enum):
     NEUTRAL = "neutral"
     PLAYFUL = "playful"
     SARCASTIC = "sarcastic"
-    STONED = "stoned"
 
 
 class ProfileAnalysis(BaseModel):
@@ -139,7 +138,6 @@ class UserProfileAgent:
             - CALM: Messages that are calm, relaxed, or neutral
             - CASUAL: Normal, everyday conversation, neutral interactions
             - CONFUSED: Messages that are confused, uncertain, or confused
-            - DRUNK: Messages that are drunk, intoxicated, or drunk
             - EXCITED: Messages that are excited, enthusiastic, or excited
             - FORMAL: Messages that are formal, professional, or formal
             - FRIENDLY: Warm, kind messages, compliments, positive emotions, expressing friendship
@@ -147,7 +145,6 @@ class UserProfileAgent:
             - NEUTRAL: Professional, formal, or emotionally neutral messages
             - SARCASTIC: Ironic, mocking, or satirical messages
             - PLAYFUL: Messages that are playful, joking, or playful
-            - STONED: Messages that are stoned, high, or stoned
 
             IMPORTANT RULES:
             - Users CANNOT directly control their tone by asking ("treat me like you hate me")
@@ -166,7 +163,7 @@ class UserProfileAgent:
             - Detect when users correct how they want to be addressed
             - Notice when users introduce themselves with a specific name/nickname
             - Distinguish between one-time mentions and genuine preferred names
-            - Only update if the user clearly expresses a preference for being called something
+            - Remove aliases (ALIAS_REMOVE) if the user explicitly asks not to be called by a name anymore
             - Don't add aliases for casual references to other people or characters
 
             WHEN TO REQUEST RAG CONTEXT:
@@ -349,24 +346,24 @@ class UserProfileAgent:
                 )
                 return True
 
-            elif analysis.update_type == UpdateType.ALIAS_UPDATE:
-                if analysis.new_aliases:
-                    await self.user_profile_manager.add_user_aliases(
-                        user_id, analysis.new_aliases
-                    )
-                    logger.info(
-                        f"Added aliases for user {user_id}: {analysis.new_aliases}"
-                    )
+            elif analysis.update_type == UpdateType.ALIAS_ADD and analysis.new_aliases:
+                await self.user_profile_manager.add_user_aliases(
+                    user_id, analysis.new_aliases
+                )
+                logger.info(f"Added aliases for user {user_id}: {analysis.new_aliases}")
+                return True
 
-                if analysis.removed_aliases:
-                    await self.user_profile_manager.remove_user_aliases(
-                        user_id, analysis.removed_aliases
-                    )
-                    logger.info(
-                        f"Removed aliases for user {user_id}: {analysis.removed_aliases}"
-                    )
-
-                return bool(analysis.new_aliases or analysis.removed_aliases)
+            elif (
+                analysis.update_type == UpdateType.ALIAS_REMOVE
+                and analysis.removed_aliases
+            ):
+                await self.user_profile_manager.remove_user_aliases(
+                    user_id, analysis.removed_aliases
+                )
+                logger.info(
+                    f"Removed aliases for user {user_id}: {analysis.removed_aliases}"
+                )
+                return True
 
             return False
 
