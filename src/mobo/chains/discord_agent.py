@@ -89,6 +89,11 @@ class DiscordAgent:
         try:
             prompt = textwrap.dedent(
                 f"""
+                -- General Instructions --
+                Default to concise.
+                Prefer human-like conversational text over bullets.
+                Never include preambles or disclaimers unless asked.
+
                 -- Personality --
                 Your personality is as follows:
                   {await self.config.get_resolved_personality_prompt()}
