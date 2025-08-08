@@ -23,6 +23,8 @@ class DiscordBot:
         intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True
+        # Required for profile updates (About Me and pronouns)
+        intents.user = True
 
         self.client: discord.Client = discord.Client(intents=intents)
         self.message_handler: MessageHandler = MessageHandler()
