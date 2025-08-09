@@ -85,13 +85,13 @@ class MessageHandler:
                 )
                 return False, f"Bot limit: {reason}"
             else:
-                logger.debug(
+                logger.info(
                     f"Bot interaction allowed for {message.author.name} ({user_id}): {reason}"
                 )
         else:
             # Human user - reset bot interaction counters for this channel
             await self.bot_tracker.reset_bot_interactions(channel_id)
-            logger.debug(
+            logger.info(
                 f"Human user {message.author.name} joined conversation - reset bot counters"
             )
 

@@ -211,9 +211,11 @@ class DiscordAgent:
             }
 
             # Run the agent
+            logger.info(f"Running agent...")
             result = await self.agent_executor.ainvoke(agent_input)
 
             # Process the result
+            logger.info(f"Processing agent output...")
             response = await self._process_agent_output(result)
 
             if response:
