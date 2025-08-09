@@ -128,6 +128,13 @@ class MessageHandler:
                         f"<@!{mention.id}>", ""
                     ).strip()
 
+            # Check for admin commands
+            admin_response = await self._handle_admin_commands(
+                message.author.id, cleaned_message
+            )
+            if admin_response is not None:
+                return admin_response
+
             # If the message is now empty after removing mentions, provide conversation context
             if not cleaned_message.strip():
                 try:
@@ -169,6 +176,36 @@ class MessageHandler:
         except Exception as e:
             logger.error(f"Error handling message: {e}")
             return None
+
+    async def _handle_admin_commands(
+        self, user_id: str, message: str
+    ) -> Optional[BotResponse]:
+        """Handle admin-only commands.
+
+        Args:
+            user_id: The Discord user ID of the message author
+            message: The cleaned message content
+
+        Returns:
+            BotResponse if an admin command was handled, None otherwise
+        """
+        if str(user_id) not in self.config.admin_user_ids:
+            return None
+
+        # Handle model change command
+        if message.startswith("!model"):
+            parts = message.split(maxsplit=1)
+            if len(parts) != 2:
+                return BotResponse(
+                    text="Usage: !model <model_name>\nExample: !model openai/gpt-4-turbo"
+                )
+
+            new_model = parts[1].strip()
+            result = await self.agent.change_model(new_model)
+            return BotResponse(text=result)
+
+        # Add other admin commands here in the future
+        return None
 
     async def close(self) -> None:
         """Clean up resources."""

@@ -33,6 +33,15 @@ class DiscordAgent:
         self.user_profile_agent = UserProfileAgent()
         self.bot_interaction_tracker = BotInteractionTracker()
 
+        self.tools = get_all_tools()
+        # TODO: Why aren't we using the full prompt?
+        self.prompt = create_simple_discord_bot_prompt()
+
+        # Initialize LLM and agent
+        self._initialize_llm()
+
+    def _initialize_llm(self) -> None:
+        """Initialize or reinitialize the LLM with current config."""
         api_key_str = self.config.openrouter_api_key.get_secret_value()
         api_key_secret = SecretStr(api_key_str)
 
@@ -43,11 +52,8 @@ class DiscordAgent:
             base_url=self.config.openrouter_base_url,
         )
 
-        self.tools = get_all_tools()
-        self.prompt = create_simple_discord_bot_prompt()
-
+        # Recreate agent with new LLM
         self.agent = create_openai_tools_agent(self.llm, self.tools, self.prompt)
-
         self.agent_executor = AgentExecutor(
             agent=self.agent,
             tools=self.tools,
@@ -56,6 +62,27 @@ class DiscordAgent:
             max_iterations=3,
             return_intermediate_steps=True,
         )
+
+    async def change_model(self, new_model: str) -> str:
+        """Change the model and reinitialize the agent.
+
+        Args:
+            new_model: The new model identifier to use
+
+        Returns:
+            A message indicating success or failure
+        """
+        try:
+            old_model = self.config.openai_model
+            self.config.openai_model = new_model
+            self._initialize_llm()
+            logger.info(f"Successfully changed model from {old_model} to {new_model}")
+            return f"Successfully changed model from {old_model} to {new_model}"
+        except Exception as e:
+            self.config.openai_model = old_model  # Revert on failure
+            self._initialize_llm()
+            logger.error(f"Failed to change model: {e}")
+            return f"Failed to change model: {str(e)}"
 
     async def _get_context_and_profile(
         self, user_message: str, user_id: str, channel_id: str

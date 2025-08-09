@@ -61,6 +61,27 @@ class Config(BaseSettings):
     discord_token: SecretStr = Field(
         default=SecretStr(""), description="Discord bot token"
     )
+    admin_user_ids: list[str] = Field(
+        default_factory=lambda: [],
+        description="List of Discord user IDs that can use admin commands. Set via ADMIN_USER_IDS env var as comma-separated values",
+    )
+
+    @model_validator(mode="before")
+    def parse_admin_user_ids(cls, values: dict) -> dict:
+        """Parse admin user IDs from environment variable."""
+        if admin_ids := values.get("admin_user_ids"):
+            # Handle string input (comma-separated)
+            if isinstance(admin_ids, str):
+                values["admin_user_ids"] = [
+                    id.strip() for id in admin_ids.split(",") if id.strip()
+                ]
+            # Handle single integer input
+            elif isinstance(admin_ids, int):
+                values["admin_user_ids"] = [str(admin_ids)]
+            # Handle single float input (some env vars might convert large ints to float)
+            elif isinstance(admin_ids, float) and admin_ids.is_integer():
+                values["admin_user_ids"] = [str(int(admin_ids))]
+        return values
 
     # Bot Behavior
     max_bot_responses: int = Field(
