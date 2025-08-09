@@ -24,7 +24,7 @@ class Config(BaseSettings):
         default=SecretStr(""), description="OpenAI API key"
     )
     openai_model: str = "gpt-4o"
-    openai_temperature: float = 0.7
+    openai_temperature: float = 1.0
     rag_model: str = Field(
         default="gpt-4o-mini",
         description="OpenAI model for RAG query analysis (cheaper/faster model recommended)",

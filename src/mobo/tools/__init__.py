@@ -10,6 +10,12 @@ from .discord_tools import (
 from .image_generation import generate_image
 from .context import set_discord_context, get_discord_context
 from .giphy_tools import SearchGiphyTool
+from .user_lookup import (
+    SearchUsersByLikeTool,
+    SearchUsersByDislikeTool,
+    SearchUsersByAliasTool,
+    GetUserProfileTool,
+)
 
 # Export all tools for easy access
 __all__ = [
@@ -22,6 +28,10 @@ __all__ = [
     "set_discord_context",
     "get_discord_context",
     "SearchGiphyTool",
+    "SearchUsersByLikeTool",
+    "SearchUsersByDislikeTool",
+    "SearchUsersByAliasTool",
+    "GetUserProfileTool",
 ]
 
 
@@ -35,4 +45,8 @@ def get_all_tools():
         mention_user,
         mention_message_author,
         SearchGiphyTool(),
+        SearchUsersByLikeTool(),
+        SearchUsersByDislikeTool(),
+        SearchUsersByAliasTool(),
+        GetUserProfileTool(),
     ]
