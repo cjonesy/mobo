@@ -245,7 +245,10 @@ async def generate_and_set_profile_picture(prompt: str) -> str:
         from openai import AsyncOpenAI
         import httpx
 
-        client = AsyncOpenAI(api_key=config.openai_api_key.get_secret_value())
+        client = AsyncOpenAI(
+            api_key=config.openrouter_api_key.get_secret_value(),
+            base_url=config.openrouter_base_url,
+        )
 
         # Prefer a square image for avatars
         try:

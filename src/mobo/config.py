@@ -19,19 +19,29 @@ class Config(BaseSettings):
         case_sensitive=False,
     )
 
-    # OpenAI Configuration
     openai_api_key: SecretStr = Field(
         default=SecretStr(""), description="OpenAI API key"
     )
-    openai_model: str = "gpt-4o"
+    openrouter_api_key: SecretStr = Field(
+        default=SecretStr(""), description="OpenRouter API key"
+    )
+    openrouter_base_url: str = Field(
+        default="https://openrouter.ai/api/v1",
+        description="Base URL for OpenRouter API requests",
+    )
+    openai_base_url: str = Field(
+        default="https://api.openai.com/v1",
+        description="Base URL for OpenAI API requests",
+    )
+    openai_model: str = "openai/gpt-4.1"
     openai_temperature: float = 1.0
     rag_model: str = Field(
-        default="gpt-4o-mini",
-        description="OpenAI model for RAG query analysis (cheaper/faster model recommended)",
+        default="openai/gpt-5-mini",
+        description="Model for RAG query analysis (cheaper/faster model recommended)",
     )
     user_profile_model: str = Field(
-        default="gpt-4o-mini",
-        description="OpenAI model for user profile analysis (cheaper/faster model recommended)",
+        default="openai/gpt-5-mini",
+        description="Model for user profile analysis (cheaper/faster model recommended)",
     )
     embedding_model: str = "text-embedding-3-small"
 

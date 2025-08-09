@@ -112,7 +112,8 @@ class UserProfileAgent:
         self.llm = ChatOpenAI(
             model=self.config.user_profile_model,
             temperature=0.1,  # Low temperature for consistent analysis
-            api_key=self.config.openai_api_key,
+            api_key=self.config.openrouter_api_key,
+            base_url=self.config.openrouter_base_url,
         )
 
         self.parser = PydanticOutputParser(pydantic_object=ProfileAnalysis)

@@ -33,13 +33,14 @@ class DiscordAgent:
         self.user_profile_agent = UserProfileAgent()
         self.bot_interaction_tracker = BotInteractionTracker()
 
-        api_key_str = self.config.openai_api_key.get_secret_value()
+        api_key_str = self.config.openrouter_api_key.get_secret_value()
         api_key_secret = SecretStr(api_key_str)
 
         self.llm = ChatOpenAI(
             model=self.config.openai_model,
             temperature=self.config.openai_temperature,
             api_key=api_key_secret,
+            base_url=self.config.openrouter_base_url,
         )
 
         self.tools = get_all_tools()
