@@ -77,6 +77,12 @@ def run(ctx: click.Context) -> None:
         )
         sys.exit(1)
 
+    if not config.openrouter_api_key.get_secret_value():
+        click.echo(
+            "❌ Error: OPENROUTER_API_KEY environment variable is required", err=True
+        )
+        sys.exit(1)
+
     # Check personality prompt
     try:
         config.get_resolved_personality_prompt_sync()

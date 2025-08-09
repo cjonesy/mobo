@@ -27,6 +27,7 @@ class RAGMemory:
         self.embeddings: OpenAIEmbeddings = OpenAIEmbeddings(
             api_key=self.config.openai_api_key,
             model=self.config.embedding_model,
+            base_url=self.config.openai_base_url,
         )
         self.engine: AsyncEngine = create_async_engine(
             self.config.database_url,
