@@ -37,8 +37,8 @@ async def generate_image(prompt: str) -> Any:
         from openai import AsyncOpenAI
 
         client = AsyncOpenAI(
-            api_key=config.openrouter_api_key.get_secret_value(),
-            base_url=config.openrouter_base_url,
+            api_key=config.openai_api_key.get_secret_value(),
+            base_url=config.openai_base_url,
         )
 
         logger.info(f"Generating image with prompt: {prompt}")
