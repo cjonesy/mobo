@@ -189,23 +189,25 @@ class MessageHandler:
         Returns:
             BotResponse if an admin command was handled, None otherwise
         """
+        # Clean and check if it's a command we handle
+        message = message.strip()
+        if not message.startswith("!model"):
+            return None
+
+        # Check admin permissions only if it's a command we handle
         if str(user_id) not in self.config.admin_user_ids:
             return None
 
-        # Handle model change command
-        if message.startswith("!model"):
-            parts = message.split(maxsplit=1)
-            if len(parts) != 2:
-                return BotResponse(
-                    text="Usage: !model <model_name>\nExample: !model openai/gpt-4-turbo"
-                )
+        # Parse the model change command
+        parts = message.split(maxsplit=1)
+        if len(parts) != 2:
+            return BotResponse(
+                text="Usage: !model <model_name>\nExample: !model openai/gpt-4-turbo"
+            )
 
-            new_model = parts[1].strip()
-            result = await self.agent.change_model(new_model)
-            return BotResponse(text=result)
-
-        # Add other admin commands here in the future
-        return None
+        new_model = parts[1].strip()
+        result = await self.agent.change_model(new_model)
+        return BotResponse(text=result)
 
     async def close(self) -> None:
         """Clean up resources."""
