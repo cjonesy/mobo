@@ -32,9 +32,9 @@ dev:
         i=$((i+1)); \
     done
     @echo "🗄️ Initializing database schema..."
-    uv run python -m src.mobo init-db
+    uv run python scripts/init_db.py
     @echo "🤖 Starting Discord bot locally..."
-    uv run python -m src.mobo run
+    uv run mobo-dev
 
 # Stop development environment
 dev-stop:
@@ -76,7 +76,7 @@ install:
 # Run the bot locally (assumes external database)
 run:
     @echo "🤖 Starting Discord bot locally..."
-    uv run python -m src.mobo run
+    uv run python -m bot.main
 
 # === TESTING & QUALITY ===
 
@@ -92,17 +92,17 @@ test:
 # Lint code
 lint:
     @echo "🔍 Linting code..."
-    uv run ruff check --fix src/
+    uv run ruff check --fix bot/
 
 # Format code
 format:
     @echo "🎨 Formatting code..."
-    uv run ruff format src/
+    uv run ruff format bot/
 
 # Type check code
 typecheck:
     @echo "🔎 Type checking code..."
-    uv run mypy src/
+    uv run mypy bot/
 
 # Run all quality checks
 check: lint typecheck test

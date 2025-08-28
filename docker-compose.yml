@@ -27,7 +27,7 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
-    command: ["mobo", "run"]
+    command: ["python", "-m", "bot.main"]
 
 volumes:
   postgres_data:

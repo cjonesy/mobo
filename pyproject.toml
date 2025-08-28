@@ -14,6 +14,8 @@ dependencies = [
     "langchain-openai>=0.2.0",
     "langchain-community>=0.3.27",
     "langchain-postgres>=0.0.9",
+    "langgraph>=0.2.0",
+    "langgraph-checkpoint-postgres>=2.0.0",
     "openai>=1.97.0",
     "numpy>=2.1.0",
     "pydantic>=2.9.0",
@@ -25,23 +27,38 @@ dependencies = [
     "psycopg2-binary>=2.9.0",
     "click>=8.0.0",
     "colorlog>=6.8.0",
+    "langgraph-checkpoint>=2.1.1",
+    "google-api-python-client>=2.0.0",
 ]
 
 [project.scripts]
-mobo = "mobo.cli:main"
+mobo-run = "bot.main:run_bot"
+mobo-dev = "bot.main:run_dev"
 
 [tool.uv]
 dev-dependencies = [
     "mypy>=1.17.0",
     "pytest>=8.4.1",
+    "pytest-asyncio>=0.24.0",
     "ruff>=0.12.4",
 ]
 
 [tool.hatch.build]
-include = ["src/mobo"]
+include = ["bot"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/mobo"]
+packages = ["bot"]
 
-[tool.hatch.build.sources]
-"src" = ""
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+markers = [
+    "slow: mark test as slow running",
+]
+filterwarnings = [
+    "ignore:'audioop' is deprecated and slated for removal in Python 3.13:DeprecationWarning",
+]
