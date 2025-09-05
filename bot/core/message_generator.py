@@ -10,10 +10,10 @@ import time
 import textwrap
 
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage
+from langchain_core.messages import SystemMessage, HumanMessage
 
 from .state import BotState, log_workflow_step, add_debug_info
-from .prompt_utils import load_personality_and_user_context
+from .prompt_helpers import build_user_context_text
 from ..config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -51,11 +51,14 @@ async def message_generator_node(
             state["extracted_artifacts"] = artifacts_found
             logger.info(f"🔧 Preserved {len(artifacts_found)} artifacts in state")
 
-        # Load bot personality and user context
-        personality, profile_text = await load_personality_and_user_context(
-            memory_system, state["user_id"]
-        )
-        
+        # Use already loaded context from the load_context node
+        personality = state["personality"]
+        user_profile = state.get("user_profile", {})
+        rag_context = state.get("rag_context", "")
+
+        # Build user context text
+        profile_text = build_user_context_text(user_profile)
+
         settings = get_settings()
 
         system_prompt = textwrap.dedent(
@@ -68,9 +71,13 @@ async def message_generator_node(
             USER CONTEXT:
             {profile_text}
 
+            RECENT CONVERSATION HISTORY:
+            {rag_context}
+
             RESPONSE GUIDELINES:
             - Be true to your personality and respond naturally
             - Use tool results to enhance your response, don't just repeat them
+            - Remember the conversation history and maintain context
             - For emoji tools: convert emoji names to actual emoji (thumbs_up → 👍, custom emoji → :name: format)
             - Keep responses under 2000 characters for Discord
             - Show enthusiasm that matches your personality

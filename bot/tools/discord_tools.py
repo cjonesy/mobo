@@ -199,7 +199,7 @@ async def set_activity(
 
             activity_type_lower = activity_type.lower()
             if activity_type_lower not in activity_map:
-                return f"❌ Invalid activity type. Use: playing, listening, watching, competing, streaming, or custom"
+                return "❌ Invalid activity type. Use: playing, listening, watching, competing, streaming, or custom"
 
             activity = discord.Activity(
                 type=activity_map[activity_type_lower], name=activity_name.strip()
@@ -361,14 +361,14 @@ async def get_user_profile(user_id: str) -> str:
             try:
                 member = context.message.guild.get_member(user_id_int)
                 user = member
-            except:
+            except (AttributeError, TypeError):
                 pass
 
         # If not found as member, try to get as user from client
         if not user:
             try:
                 user = await context.client.fetch_user(user_id_int)
-            except:
+            except (discord.NotFound, discord.HTTPException, AttributeError):
                 return f"User with ID {user_id} not found or not accessible"
 
         # Build profile information
@@ -395,7 +395,7 @@ async def get_user_profile(user_id: str) -> str:
 
         # Guild-specific info (if member)
         if member and context.message.guild:
-            result.append(f"\nSERVER INFO:")
+            result.append("\nSERVER INFO:")
             result.append(f"Server: {context.message.guild.name}")
 
             # Join date
@@ -431,7 +431,7 @@ async def get_user_profile(user_id: str) -> str:
             if member.nick:
                 result.append(f"Nickname: {member.nick}")
         else:
-            result.append(f"\nNot a member of current server or in DM")
+            result.append("\nNot a member of current server or in DM")
 
         logger.info(f"👤 Retrieved profile for user {user.name} ({user.id})")
 

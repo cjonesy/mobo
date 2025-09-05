@@ -6,12 +6,12 @@ the web and return relevant results.
 """
 
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Optional
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from ..config import get_settings
-from .common import registered_tool, validate_api_key
+from .common import registered_tool
 from .rate_limiting import rate_limited
 
 logger = logging.getLogger(__name__)

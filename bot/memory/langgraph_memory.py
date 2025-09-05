@@ -10,10 +10,15 @@ The regular PostgresSaver has a bug where aget_tuple() raises NotImplementedErro
 """
 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, List
+from datetime import datetime, UTC
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.store.postgres import PostgresStore
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from .models import Conversation, get_recent_conversations
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +40,8 @@ class LangGraphMemory:
         self._checkpointer_manager = None
         self._store_manager = None
         self._initialized = False
+        self.engine = create_engine(database_url)
+        self.SessionLocal = sessionmaker(bind=self.engine)
 
         logger.info("🚀 Memory initialized with PostgreSQL LangGraph patterns")
 
@@ -52,10 +59,8 @@ class LangGraphMemory:
             await self.checkpointer.setup()
             logger.info("✅ AsyncPostgresSaver initialized and setup complete")
 
-            # Initialize PostgresStore context manager  
-            self._store_manager = PostgresStore.from_conn_string(
-                self.database_url
-            )
+            # Initialize PostgresStore context manager
+            self._store_manager = PostgresStore.from_conn_string(self.database_url)
             self.store = self._store_manager.__enter__()
             self.store.setup()
             logger.info("✅ PostgresStore initialized and setup complete")
@@ -91,7 +96,7 @@ class LangGraphMemory:
                 # Handle both list of items and single item responses
                 if isinstance(items, list) and len(items) > 0:
                     return items[0].value
-                elif hasattr(items, 'value'):
+                elif hasattr(items, "value"):
                     return items.value
             else:
                 # Create default profile
@@ -147,6 +152,102 @@ class LangGraphMemory:
         except Exception as e:
             logger.error(f"Error updating user profile for {user_id}: {e}")
 
+    async def save_conversation(
+        self,
+        user_id: str,
+        channel_id: str,
+        guild_id: str = None,
+        user_message: str = None,
+        bot_response: str = None,
+    ):
+        """
+        Save conversation messages to the database.
+
+        Args:
+            user_id: Discord user ID
+            channel_id: Discord channel ID
+            guild_id: Discord guild ID (optional for DMs)
+            user_message: User's message content
+            bot_response: Bot's response content
+        """
+        try:
+            with self.SessionLocal() as session:
+                # Save user message if provided
+                if user_message:
+                    user_conv = Conversation(
+                        user_id=user_id,
+                        channel_id=channel_id,
+                        guild_id=guild_id,
+                        role="user",
+                        content=user_message,
+                        message_length=len(user_message),
+                        created_at=datetime.now(UTC),
+                    )
+                    session.add(user_conv)
+
+                # Save bot response if provided
+                if bot_response:
+                    bot_conv = Conversation(
+                        user_id=user_id,
+                        channel_id=channel_id,
+                        guild_id=guild_id,
+                        role="assistant",
+                        content=bot_response,
+                        message_length=len(bot_response),
+                        created_at=datetime.now(UTC),
+                    )
+                    session.add(bot_conv)
+
+                session.commit()
+                logger.debug(
+                    f"Saved conversation for user {user_id} in channel {channel_id}"
+                )
+
+        except Exception as e:
+            logger.error(f"Error saving conversation: {e}")
+
+    async def get_conversation_history(
+        self, channel_id: str, limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Get recent conversation history for a channel.
+
+        Args:
+            channel_id: Discord channel ID
+            limit: Maximum number of messages to retrieve
+
+        Returns:
+            List of conversation messages as dictionaries
+        """
+        try:
+            with self.SessionLocal() as session:
+                conversations = get_recent_conversations(session, channel_id, limit)
+
+                # Convert to dictionaries for the bot state
+                history = []
+                for conv in conversations:
+                    history.append(
+                        {
+                            "role": conv.role,
+                            "content": conv.content,
+                            "user_id": conv.user_id,
+                            "timestamp": conv.created_at.isoformat(),
+                            "message_length": conv.message_length,
+                        }
+                    )
+
+                # Reverse to get chronological order (oldest first)
+                history.reverse()
+
+                logger.debug(
+                    f"Retrieved {len(history)} conversation messages for channel {channel_id}"
+                )
+                return history
+
+        except Exception as e:
+            logger.error(f"Error retrieving conversation history: {e}")
+            return []
+
     async def _cleanup_managers(self):
         """Clean up context managers properly (async for AsyncPostgresSaver)."""
         if self._checkpointer_manager and self.checkpointer:
@@ -154,7 +255,7 @@ class LangGraphMemory:
                 await self._checkpointer_manager.__aexit__(None, None, None)
             except Exception as e:
                 logger.warning(f"Error closing AsyncPostgresSaver manager: {e}")
-                
+
         if self._store_manager and self.store:
             try:
                 self._store_manager.__exit__(None, None, None)

@@ -5,7 +5,6 @@ Simple tool registry where tools can register themselves.
 """
 
 import logging
-from functools import wraps
 from typing import List, Any, Callable, TypeVar, Optional
 from langchain_core.tools import tool as langchain_tool
 

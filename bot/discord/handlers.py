@@ -99,7 +99,7 @@ class MessageProcessor:
             )
 
             # Don't send error response
-            logger.info(f"🔇 Bot staying silent due to processing error")
+            logger.info("🔇 Bot staying silent due to processing error")
 
             return MessageResult.ERROR
 
@@ -333,7 +333,7 @@ class ErrorHandler:
         logger.error(f"Message processing error for {message.author.name}: {error}")
 
         # Log error without sending response
-        logger.info(f"🔇 Bot staying silent due to message error")
+        logger.info("🔇 Bot staying silent due to message error")
 
     async def handle_client_error(self, event: str, args: tuple, kwargs: dict):
         """
@@ -442,7 +442,7 @@ class AdminHandler:
         if not error_summary:
             return "✅ No errors recorded!"
 
-        error_lines = [f"**Error Summary:**"]
+        error_lines = ["**Error Summary:**"]
         for error_type, count in sorted(
             error_summary.items(), key=lambda x: x[1], reverse=True
         ):

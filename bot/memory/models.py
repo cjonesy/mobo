@@ -7,7 +7,6 @@ user profiles, and vector embeddings for RAG functionality.
 
 import uuid
 from datetime import datetime, timedelta, UTC
-from typing import Optional, List
 
 from sqlalchemy import (
     Column,
@@ -20,9 +19,8 @@ from sqlalchemy import (
     JSON,
     ForeignKey,
     Index,
-    func,
 )
-from sqlalchemy.dialects.postgresql import UUID, ARRAY
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base, relationship
 from pgvector.sqlalchemy import Vector
 

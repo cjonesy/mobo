@@ -12,11 +12,10 @@ import discord
 
 from ..config import Settings
 from ..core.workflow import create_bot_workflow
-from ..memory.langgraph_memory import LangGraphMemory, get_config_for_thread
+from ..memory.langgraph_memory import LangGraphMemory
 from .handlers import (
     MessageProcessor,
     ProcessingContext,
-    MessageResult,
     ErrorHandler,
     AdminHandler,
 )
@@ -199,6 +198,6 @@ class BotClient(discord.Client):
             channel = self.get_channel(int(channel_id))
             if channel and hasattr(channel, "guild"):
                 return channel.guild
-        except:
+        except (ValueError, AttributeError, TypeError):
             pass
         return None

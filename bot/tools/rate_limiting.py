@@ -5,17 +5,14 @@ This module provides decorators and utilities for rate limiting API calls
 across different resources, with persistent storage in the database.
 """
 
-import asyncio
 import logging
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, UTC
 from functools import wraps
 from typing import Optional, Callable, Any, Dict, TypeVar
 from contextlib import asynccontextmanager
 
-from sqlalchemy import create_engine, select, update, insert
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.dialects.postgresql import insert as postgres_insert
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from ..config import get_settings
 from ..memory.models import RateLimit
@@ -48,7 +45,7 @@ def get_async_engine():
         )
         _async_session_maker = async_sessionmaker(_async_engine, expire_on_commit=False)
 
-        logger.debug(f"Created async engine for rate limiting")
+        logger.debug("Created async engine for rate limiting")
 
     return _async_engine
 
@@ -56,7 +53,6 @@ def get_async_engine():
 @asynccontextmanager
 async def get_rate_limit_session():
     """Get an async database session for rate limiting operations."""
-    engine = get_async_engine()
     if _async_session_maker is None:
         raise RuntimeError("Async session maker not initialized")
 

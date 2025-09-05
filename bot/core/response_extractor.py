@@ -119,7 +119,7 @@ def format_response_summary(state: BotState) -> str:
     response = state["final_response"]
 
     lines = [
-        f"💬 Response Extraction:",
+        "💬 Response Extraction:",
         f"   📝 Length: {len(response)} characters",
         f"   💭 Response: {response[:100]}{'...' if len(response) > 100 else ''}",
     ]
