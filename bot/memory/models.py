@@ -470,24 +470,72 @@ class RateLimit(Base, TimestampMixin):
 # =============================================================================
 
 
+def _setup_pgvector_sync(conn):
+    """Setup pgvector extension and indexes synchronously."""
+    from sqlalchemy import text
+
+    # Enable pgvector extension
+    conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+
+    # Create vector similarity index for conversations using cosine distance
+    conn.execute(
+        text(
+            """
+        CREATE INDEX IF NOT EXISTS idx_conversations_embedding_cosine
+        ON conversations USING ivfflat (embedding vector_cosine_ops)
+        WITH (lists = 100)
+    """
+        )
+    )
+
+
+async def _setup_pgvector_async(conn):
+    """Setup pgvector extension and indexes asynchronously."""
+    from sqlalchemy import text
+
+    # Enable pgvector extension
+    await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+
+    # Create vector similarity index for conversations using cosine distance
+    await conn.execute(
+        text(
+            """
+        CREATE INDEX IF NOT EXISTS idx_conversations_embedding_cosine
+        ON conversations USING ivfflat (embedding vector_cosine_ops)
+        WITH (lists = 100)
+    """
+        )
+    )
+
+
 def create_tables_if_not_exist(engine):
     """
-    Create all tables if they don't exist.
+    Create all tables if they don't exist, enable pgvector extension, and create indexes.
 
     Args:
         engine: SQLAlchemy engine
     """
+    # Setup pgvector extension and indexes first
+    with engine.connect() as conn:
+        _setup_pgvector_sync(conn)
+        conn.commit()
+
+    # Create all tables
     Base.metadata.create_all(engine)
 
 
 async def create_tables_async(engine):
     """
-    Create all tables asynchronously.
+    Create all tables asynchronously, enable pgvector extension, and create indexes.
 
     Args:
         engine: Async SQLAlchemy engine
     """
     async with engine.begin() as conn:
+        # Setup pgvector extension and indexes
+        await _setup_pgvector_async(conn)
+
+        # Create all tables
         await conn.run_sync(Base.metadata.create_all)
 
 

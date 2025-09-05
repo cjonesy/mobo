@@ -147,7 +147,10 @@ def init_db():
             logger.info("🗄️ Initializing LangGraph database schema...")
 
             # Initialize LangGraph memory system (handles both checkpointing and user profiles)
-            memory_system = LangGraphMemory(settings.database_url)
+            memory_system = LangGraphMemory(
+                database_url=settings.database_url,
+                openai_api_key=settings.openai_api_key.get_secret_value(),
+            )
             await memory_system.initialize()
 
             logger.info("✅ LangGraph database initialized successfully!")

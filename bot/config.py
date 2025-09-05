@@ -166,9 +166,7 @@ class Settings(BaseSettings):
     google_custom_search_api_key: SecretStr = Field(
         default=SecretStr(""), description="Google Custom Search API key"
     )
-    google_cse_id: str = Field(
-        default="", description="Google Custom Search Engine ID"
-    )
+    google_cse_id: str = Field(default="", description="Google Custom Search Engine ID")
 
     # =============================================================================
     # ADMIN AND DEVELOPMENT
@@ -257,6 +255,9 @@ def validate_required_settings() -> None:
 
     if not settings.openrouter_api_key.get_secret_value():
         errors.append("OPENROUTER_API_KEY is required")
+
+    if not settings.openai_api_key.get_secret_value():
+        errors.append("OPENAI_API_KEY is required for embeddings and image generation")
 
     # Check personality configuration
     try:

@@ -46,8 +46,11 @@ class BotState(TypedDict):
     conversation_history: List[Dict[str, Any]]
     """Recent conversation messages for context"""
 
+    relevant_conversations: List[Dict[str, Any]]
+    """Semantically relevant conversations from RAG search"""
+
     rag_context: str
-    """Relevant context retrieved from RAG memory"""
+    """Formatted context combining recent and relevant conversations"""
 
     # =============================================================================
     # LANGGRAPH STATE (Set by chatbot node)
@@ -78,7 +81,7 @@ class BotState(TypedDict):
 
     debug_info: Dict[str, Any]
     """Additional debug information"""
-    
+
     extracted_artifacts: List[Dict[str, Any]]
     """Tool artifacts extracted for Discord upload (images, files, etc.)"""
 
@@ -184,6 +187,7 @@ def create_initial_state(
         personality="",
         user_profile={},
         conversation_history=[],
+        relevant_conversations=[],
         rag_context="",
         # LangGraph state (to be filled by chatbot)
         messages=[],

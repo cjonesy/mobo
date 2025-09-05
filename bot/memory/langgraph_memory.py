@@ -17,6 +17,7 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.store.postgres import PostgresStore
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from openai import AsyncOpenAI
 
 from .models import Conversation, get_recent_conversations
 
@@ -33,7 +34,7 @@ class LangGraphMemory:
     - Thread-based conversation management with proper context manager handling
     """
 
-    def __init__(self, database_url: str):
+    def __init__(self, database_url: str, openai_api_key: str):
         self.database_url = database_url
         self.checkpointer = None
         self.store = None
@@ -42,6 +43,9 @@ class LangGraphMemory:
         self._initialized = False
         self.engine = create_engine(database_url)
         self.SessionLocal = sessionmaker(bind=self.engine)
+
+        # OpenAI client for embeddings
+        self.openai_client = AsyncOpenAI(api_key=openai_api_key)
 
         logger.info("🚀 Memory initialized with PostgreSQL LangGraph patterns")
 
@@ -152,6 +156,31 @@ class LangGraphMemory:
         except Exception as e:
             logger.error(f"Error updating user profile for {user_id}: {e}")
 
+    async def _generate_embedding(self, text: str) -> List[float]:
+        """
+        Generate embedding for text using OpenAI's embedding model.
+
+        Args:
+            text: Text to embed
+
+        Returns:
+            List of floats representing the embedding
+        """
+        if not self.openai_client:
+            logger.warning(
+                "OpenAI client not configured - skipping embedding generation"
+            )
+            return None
+
+        try:
+            response = await self.openai_client.embeddings.create(
+                model="text-embedding-3-small", input=text, encoding_format="float"
+            )
+            return response.data[0].embedding
+        except Exception as e:
+            logger.error(f"Error generating embedding: {e}")
+            return None
+
     async def save_conversation(
         self,
         user_id: str,
@@ -171,6 +200,15 @@ class LangGraphMemory:
             bot_response: Bot's response content
         """
         try:
+            # Generate embeddings for the messages
+            user_embedding = None
+            bot_embedding = None
+
+            if user_message:
+                user_embedding = await self._generate_embedding(user_message)
+            if bot_response:
+                bot_embedding = await self._generate_embedding(bot_response)
+
             with self.SessionLocal() as session:
                 # Save user message if provided
                 if user_message:
@@ -181,6 +219,7 @@ class LangGraphMemory:
                         role="user",
                         content=user_message,
                         message_length=len(user_message),
+                        embedding=user_embedding,
                         created_at=datetime.now(UTC),
                     )
                     session.add(user_conv)
@@ -194,13 +233,14 @@ class LangGraphMemory:
                         role="assistant",
                         content=bot_response,
                         message_length=len(bot_response),
+                        embedding=bot_embedding,
                         created_at=datetime.now(UTC),
                     )
                     session.add(bot_conv)
 
                 session.commit()
                 logger.debug(
-                    f"Saved conversation for user {user_id} in channel {channel_id}"
+                    f"Saved conversation with embeddings for user {user_id} in channel {channel_id}"
                 )
 
         except Exception as e:
@@ -247,6 +287,178 @@ class LangGraphMemory:
         except Exception as e:
             logger.error(f"Error retrieving conversation history: {e}")
             return []
+
+    async def search_relevant_conversations(
+        self,
+        query: str,
+        channel_id: str = None,
+        limit: int = 5,
+        similarity_threshold: float = 0.7,
+    ) -> List[Dict[str, Any]]:
+        """
+        Search for semantically relevant conversations using vector similarity.
+
+        Args:
+            query: The text to search for similar conversations
+            channel_id: Optional channel ID to limit search scope
+            limit: Maximum number of results to return
+            similarity_threshold: Minimum cosine similarity score (0.0-1.0)
+
+        Returns:
+            List of relevant conversation messages with similarity scores
+        """
+        if not self.openai_client:
+            logger.warning("OpenAI client not configured - skipping semantic search")
+            return []
+
+        try:
+            # Generate embedding for the query
+            query_embedding = await self._generate_embedding(query)
+            if not query_embedding:
+                return []
+
+            with self.SessionLocal() as session:
+                # Build the query using SQLAlchemy ORM with proper vector operations
+                query = (
+                    session.query(
+                        Conversation.id,
+                        Conversation.user_id,
+                        Conversation.channel_id,
+                        Conversation.guild_id,
+                        Conversation.role,
+                        Conversation.content,
+                        Conversation.message_length,
+                        Conversation.created_at,
+                        Conversation.embedding.cosine_distance(query_embedding).label(
+                            "similarity_distance"
+                        ),
+                        (
+                            1 - Conversation.embedding.cosine_distance(query_embedding)
+                        ).label("similarity_score"),
+                    )
+                    .filter(Conversation.embedding.is_not(None))
+                    .filter(
+                        (1 - Conversation.embedding.cosine_distance(query_embedding))
+                        >= similarity_threshold
+                    )
+                )
+
+                if channel_id:
+                    query = query.filter(Conversation.channel_id == channel_id)
+
+                query = query.order_by(
+                    (1 - Conversation.embedding.cosine_distance(query_embedding)).desc()
+                ).limit(limit)
+
+                rows = query.all()
+
+            # Convert to dictionaries
+            relevant_conversations = []
+            for row in rows:
+                relevant_conversations.append(
+                    {
+                        "id": str(row.id),
+                        "role": row.role,
+                        "content": row.content,
+                        "user_id": row.user_id,
+                        "channel_id": row.channel_id,
+                        "guild_id": row.guild_id,
+                        "timestamp": row.created_at.isoformat(),
+                        "message_length": row.message_length,
+                        "similarity_score": float(row.similarity_score),
+                        "similarity_distance": float(row.similarity_distance),
+                    }
+                )
+
+                logger.debug(
+                    f"Found {len(relevant_conversations)} relevant conversations for query: {query[:50]}..."
+                )
+                return relevant_conversations
+
+        except Exception as e:
+            logger.error(f"Error searching relevant conversations: {e}")
+            return []
+
+    async def get_hybrid_conversation_context(
+        self,
+        current_message: str,
+        channel_id: str,
+        recent_limit: int = 5,
+        relevant_limit: int = 3,
+        similarity_threshold: float = 0.7,
+    ) -> Dict[str, Any]:
+        """
+        Get hybrid conversation context combining recent messages and semantically relevant ones.
+
+        Args:
+            current_message: The current user message to find context for
+            channel_id: Discord channel ID
+            recent_limit: Number of recent messages to include
+            relevant_limit: Number of semantically relevant messages to include
+            similarity_threshold: Minimum similarity score for relevant messages
+
+        Returns:
+            Dictionary with recent_messages, relevant_messages, and formatted context
+        """
+        try:
+            # Get recent messages (chronological)
+            recent_messages = await self.get_conversation_history(
+                channel_id=channel_id, limit=recent_limit
+            )
+
+            # Get semantically relevant messages
+            relevant_messages = await self.search_relevant_conversations(
+                query=current_message,
+                channel_id=channel_id,
+                limit=relevant_limit,
+                similarity_threshold=similarity_threshold,
+            )
+
+            # Remove duplicates (if recent messages are also in relevant messages)
+            recent_ids = {msg.get("id") for msg in recent_messages if msg.get("id")}
+            relevant_messages = [
+                msg for msg in relevant_messages if msg.get("id") not in recent_ids
+            ]
+
+            # Build formatted context
+            context_parts = []
+
+            if recent_messages:
+                context_parts.append("RECENT CONVERSATION:")
+                for msg in recent_messages[-3:]:  # Last 3 recent messages
+                    role_label = "User" if msg["role"] == "user" else "Bot"
+                    context_parts.append(f"{role_label}: {msg['content']}")
+
+            if relevant_messages:
+                context_parts.append("\nRELEVANT PAST CONVERSATIONS:")
+                for msg in relevant_messages:
+                    role_label = "User" if msg["role"] == "user" else "Bot"
+                    similarity = msg.get("similarity_score", 0)
+                    context_parts.append(
+                        f"{role_label} (similarity: {similarity:.2f}): {msg['content']}"
+                    )
+
+            formatted_context = (
+                "\n".join(context_parts)
+                if context_parts
+                else "No conversation context available."
+            )
+
+            return {
+                "recent_messages": recent_messages,
+                "relevant_messages": relevant_messages,
+                "formatted_context": formatted_context,
+                "total_context_messages": len(recent_messages) + len(relevant_messages),
+            }
+
+        except Exception as e:
+            logger.error(f"Error getting hybrid conversation context: {e}")
+            return {
+                "recent_messages": [],
+                "relevant_messages": [],
+                "formatted_context": "No conversation context available.",
+                "total_context_messages": 0,
+            }
 
     async def _cleanup_managers(self):
         """Clean up context managers properly (async for AsyncPostgresSaver)."""

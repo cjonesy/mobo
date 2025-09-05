@@ -56,12 +56,6 @@ async def load_context_node(
             f"📚 Loading context for user {state['user_id']} in channel {state['channel_id']}"
         )
 
-        # Load conversation history
-        conversation_history = await memory_system.get_conversation_history(
-            channel_id=state["channel_id"], limit=10  # Last 10 messages for context
-        )
-        state["conversation_history"] = conversation_history
-
         # Load bot personality
         settings = get_settings()
         personality = await settings.get_personality_prompt()
@@ -71,22 +65,28 @@ async def load_context_node(
         user_profile = await memory_system.get_user_profile(state["user_id"])
         state["user_profile"] = user_profile
 
-        # Build RAG context from conversation history
-        if conversation_history:
-            recent_messages = []
-            for msg in conversation_history[-5:]:  # Last 5 messages
-                role_label = "User" if msg["role"] == "user" else "Bot"
-                recent_messages.append(f"{role_label}: {msg['content']}")
-            state["rag_context"] = "\n".join(recent_messages)
-        else:
-            state["rag_context"] = "No previous conversation history."
+        # Get hybrid conversation context (recent + semantically relevant)
+        context_data = await memory_system.get_hybrid_conversation_context(
+            current_message=state["user_message"],
+            channel_id=state["channel_id"],
+            recent_limit=5,  # Last 5 messages
+            relevant_limit=3,  # Top 3 semantically relevant messages
+            similarity_threshold=0.7,  # 70% similarity threshold
+        )
+
+        state["conversation_history"] = context_data["recent_messages"]
+        state["relevant_conversations"] = context_data["relevant_messages"]
+        state["rag_context"] = context_data["formatted_context"]
 
         execution_time = time.time() - start_time
         state["execution_time"] += execution_time
         add_debug_info(state, "context_loading_time", execution_time)
 
+        total_messages = len(context_data["recent_messages"]) + len(
+            context_data["relevant_messages"]
+        )
         logger.info(
-            f"✅ Context loaded: {len(conversation_history)} messages, personality loaded"
+            f"✅ Context loaded: {len(context_data['recent_messages'])} recent + {len(context_data['relevant_messages'])} relevant = {total_messages} total messages, personality loaded"
         )
         return state
 
@@ -95,6 +95,7 @@ async def load_context_node(
 
         # Set safe defaults for optional data that might have failed to load
         state["conversation_history"] = []
+        state["relevant_conversations"] = []
         state["rag_context"] = "No conversation context available."
         state["user_profile"] = {}
 

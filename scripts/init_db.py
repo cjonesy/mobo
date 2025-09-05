@@ -36,7 +36,10 @@ class DatabaseInitializer:
         try:
             # Initialize LangGraph memory system (handles both checkpointing and user profiles)
             logger.info("🚀 Initializing LangGraph memory system...")
-            self.memory_system = LangGraphMemory(self.settings.database_url)
+            self.memory_system = LangGraphMemory(
+                database_url=self.settings.database_url,
+                openai_api_key=self.settings.openai_api_key.get_secret_value(),
+            )
             await self.memory_system.initialize()
             logger.info("✅ LangGraph memory system initialized")
 
@@ -59,12 +62,15 @@ class DatabaseInitializer:
 
         try:
             # Test LangGraph memory system
-            self.memory_system = LangGraphMemory(self.settings.database_url)
+            self.memory_system = LangGraphMemory(
+                database_url=self.settings.database_url,
+                openai_api_key=self.settings.openai_api_key.get_secret_value(),
+            )
             await self.memory_system.initialize()
 
             # Test user profile functionality
             test_profile = await self.memory_system.get_user_profile("test_user")
-            
+
             if not test_profile:
                 raise RuntimeError("Failed to retrieve test user profile")
 
