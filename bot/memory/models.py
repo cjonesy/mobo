@@ -6,7 +6,7 @@ user profiles, and vector embeddings for RAG functionality.
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta, UTC
 from typing import Optional, List
 
 from sqlalchemy import (
@@ -33,9 +33,12 @@ Base = declarative_base()
 class TimestampMixin:
     """Mixin for adding created_at and updated_at timestamps."""
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
     updated_at = Column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+        DateTime,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+        nullable=False,
     )
 
 
@@ -286,7 +289,9 @@ class BotInteraction(Base, TimestampMixin):
 
     # Interaction tracking
     interaction_count = Column(Integer, nullable=False, default=0)
-    last_interaction = Column(DateTime, nullable=False, default=datetime.utcnow)
+    last_interaction = Column(
+        DateTime, nullable=False, default=lambda: datetime.now(UTC)
+    )
     is_currently_active = Column(Boolean, nullable=False, default=True)
 
     # Metadata
@@ -344,6 +349,122 @@ class ConversationAnalytics(Base, TimestampMixin):
         Index("idx_analytics_date_guild", "date", "guild_id"),
         Index("idx_analytics_date_user", "date", "user_id"),
     )
+
+
+# =============================================================================
+# RATE LIMITING
+# =============================================================================
+
+
+class RateLimit(Base, TimestampMixin):
+    """
+    Tracks API usage for rate limiting across different resources.
+
+    This allows multiple tools to share rate limits for the same underlying
+    resource (e.g., multiple tools using Google Search API).
+    """
+
+    __tablename__ = "rate_limits"
+
+    id = Column(Integer, primary_key=True)
+
+    # Resource identification
+    resource_name = Column(String, nullable=False, index=True)  # e.g., 'google-search'
+    period_start = Column(
+        DateTime, nullable=False, index=True
+    )  # Start of current period
+    period_end = Column(DateTime, nullable=False, index=True)  # End of current period
+
+    # Usage tracking
+    current_usage = Column(Integer, nullable=False, default=0)
+    max_usage = Column(Integer, nullable=False)  # Maximum allowed in this period
+
+    # Optional user-specific rate limiting
+    user_id = Column(String, nullable=True, index=True)  # None for global limits
+
+    # Metadata
+    period_type = Column(
+        String, nullable=False, default="day"
+    )  # 'minute', 'hour', 'day', 'month'
+
+    __table_args__ = (
+        Index(
+            "idx_rate_limits_resource_period",
+            "resource_name",
+            "period_start",
+            "period_end",
+        ),
+        Index("idx_rate_limits_resource_user", "resource_name", "user_id"),
+        # Unique constraint to prevent duplicate periods
+        Index(
+            "idx_rate_limits_unique",
+            "resource_name",
+            "period_start",
+            "user_id",
+            unique=True,
+        ),
+    )
+
+    def __repr__(self):
+        return f"<RateLimit(resource={self.resource_name}, usage={self.current_usage}/{self.max_usage})>"
+
+    def is_exceeded(self, increment: int = 1) -> bool:
+        """Check if the rate limit has been or would be exceeded."""
+        return self.current_usage + increment > self.max_usage
+
+    def can_make_requests(self, count: int = 1) -> bool:
+        """Check if we can make the specified number of requests."""
+        return (self.current_usage + count) <= self.max_usage
+
+    def remaining_requests(self) -> int:
+        """Get the number of remaining requests in this period."""
+        return max(0, self.max_usage - self.current_usage)
+
+    def time_until_reset(self) -> timedelta:
+        """Get time until this rate limit period resets."""
+        now = datetime.now(UTC)
+        if now >= self.period_end:
+            return timedelta(0)
+        return self.period_end - now
+
+    @classmethod
+    def get_period_bounds(
+        cls, period_type: str, base_time: datetime = None
+    ) -> tuple[datetime, datetime]:
+        """
+        Get the start and end times for a rate limit period.
+
+        Args:
+            period_type: Type of period ('minute', 'hour', 'day', 'month')
+            base_time: Base time to calculate from (defaults to now)
+
+        Returns:
+            Tuple of (period_start, period_end)
+        """
+        if base_time is None:
+            base_time = datetime.now(UTC)
+
+        if period_type == "minute":
+            start = base_time.replace(second=0, microsecond=0)
+            end = start + timedelta(minutes=1)
+        elif period_type == "hour":
+            start = base_time.replace(minute=0, second=0, microsecond=0)
+            end = start + timedelta(hours=1)
+        elif period_type == "day":
+            start = base_time.replace(hour=0, minute=0, second=0, microsecond=0)
+            end = start + timedelta(days=1)
+        elif period_type == "month":
+            # First day of current month
+            start = base_time.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            # First day of next month
+            if start.month == 12:
+                end = start.replace(year=start.year + 1, month=1)
+            else:
+                end = start.replace(month=start.month + 1)
+        else:
+            raise ValueError(f"Invalid period type: {period_type}")
+
+        return start, end
 
 
 # =============================================================================

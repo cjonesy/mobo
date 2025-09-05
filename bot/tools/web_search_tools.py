@@ -12,6 +12,7 @@ from googleapiclient.errors import HttpError
 
 from ..config import get_settings
 from .common import registered_tool, validate_api_key
+from .rate_limiting import rate_limited
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +132,7 @@ async def _search_web_impl(
 
 
 @registered_tool()
+@rate_limited(resource="google-search", max_requests=100, period="day")
 async def search_web(
     query: str,
     num_results: int = 5,
@@ -247,6 +249,7 @@ async def _search_images_impl(
 
 
 @registered_tool()
+@rate_limited(resource="google-search", max_requests=100, period="day")
 async def search_images(
     query: str,
     num_results: int = 3,

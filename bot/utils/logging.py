@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from typing import Optional, Dict, Any
 import json
-from datetime import datetime
+from datetime import datetime, UTC
 
 
 class ColoredFormatter(logging.Formatter):
@@ -58,7 +58,7 @@ class JSONFormatter(logging.Formatter):
     def format(self, record):
         """Format the log record as JSON."""
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
