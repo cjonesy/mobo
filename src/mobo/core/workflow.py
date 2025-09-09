@@ -12,11 +12,14 @@ This file defines the main workflow that orchestrates the supervisor pattern:
 import logging
 import time
 import textwrap
+from typing import cast
 
 from langgraph.graph import StateGraph, END
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig
 
 from .state import (
     BotState,
@@ -61,7 +64,7 @@ async def load_context_node(
         personality = await settings.get_personality_prompt()
         state["personality"] = personality
 
-        # Load user profile
+        # Load user profile (bot-specific preferences only)
         user_profile = await memory_system.get_user_profile(state["user_id"])
         state["user_profile"] = user_profile
 
@@ -69,9 +72,9 @@ async def load_context_node(
         context_data = await memory_system.get_hybrid_conversation_context(
             current_message=state["user_message"],
             channel_id=state["channel_id"],
-            recent_limit=5,  # Last 5 messages
-            relevant_limit=3,  # Top 3 semantically relevant messages
-            similarity_threshold=0.7,  # 70% similarity threshold
+            recent_limit=settings.recent_messages_limit,
+            relevant_limit=settings.relevant_messages_limit,
+            similarity_threshold=settings.similarity_threshold,
         )
 
         state["conversation_history"] = context_data["recent_messages"]
@@ -166,7 +169,7 @@ async def chatbot_node(
         llm = ChatOpenAI(
             model=settings.chatbot_model,
             temperature=settings.chatbot_temperature,
-            api_key=settings.openrouter_api_key.get_secret_value(),
+            api_key=settings.openrouter_api_key,
             base_url=settings.openrouter_base_url,
         )
 
@@ -276,7 +279,7 @@ async def save_conversation_node(
 def create_bot_workflow(
     settings: Settings,
     memory_system,
-) -> StateGraph:
+) -> CompiledStateGraph:
     """
     Create the main bot workflow using modern LangGraph patterns.
 
@@ -376,7 +379,7 @@ def create_bot_workflow(
 
 
 async def execute_workflow(
-    workflow: StateGraph, user_message: str, user_id: str, channel_id: str
+    workflow: CompiledStateGraph, user_message: str, user_id: str, channel_id: str
 ) -> BotState:
     """
     Execute the workflow with thread-based conversation using LangGraph.
@@ -415,7 +418,7 @@ async def execute_workflow(
         logger.info(f"✅ Workflow completed in {total_time:.2f}s")
         logger.info(f"🛤️ Path taken: {' → '.join(final_state['workflow_path'])}")
 
-        return final_state
+        return cast(BotState, final_state)
 
     except Exception as e:
         logger.exception(f"❌ Workflow execution failed: {e}")
@@ -456,8 +459,8 @@ def validate_workflow_state(state: BotState) -> list[str]:
             errors.append(f"Missing required field: {field}")
 
     # Check response length
-    response = state.get("final_response", "")
-    if len(response) > 2000:
+    response = state.get("final_response")
+    if response and len(response) > 2000:
         errors.append(f"Response too long: {len(response)} > 2000 characters")
 
     # Check execution path

@@ -13,9 +13,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-from bot.memory.models import Base, User, Conversation
-from bot.config import Settings
-from bot.memory.langgraph_memory import LangGraphMemory
+from mobo.memory.models import Base, User, Conversation
+from mobo.config import Settings
+from mobo.memory.langgraph_memory import LangGraphMemory
 
 
 # Custom pytest markers
@@ -55,7 +55,7 @@ def test_settings():
 async def test_db_engine():
     """Create a PostgreSQL test database engine."""
     import os
-    from bot.memory.models import Base
+    from mobo.memory.models import Base
 
     # Get PostgreSQL test database URL
     test_postgres_url = os.getenv(
@@ -118,10 +118,9 @@ def mock_user():
     """Create a mock user for testing."""
     return {
         "discord_user_id": "123456789",
-        "display_name": "TestUser",
-        "username": "testuser",
         "response_tone": "friendly",
-        "interaction_count": 5,
+        "likes": [],
+        "dislikes": [],
     }
 
 
@@ -149,7 +148,7 @@ def sample_bot_state():
         "timestamp": "2024-01-01T00:00:00Z",
         "personality": "You are a helpful Discord bot.",
         "user_profile": {
-            "display_name": "TestUser",
+            "discord_user_id": "123456789",
             "response_tone": "friendly",
             "likes": ["coding", "music"],
             "dislikes": ["spam"],
@@ -236,10 +235,9 @@ def create_test_user_data(**overrides):
     """Create test user data with optional overrides."""
     base_data = {
         "discord_user_id": "123456789",
-        "display_name": "TestUser",
-        "username": "testuser",
         "response_tone": "friendly",
-        "interaction_count": 0,
+        "likes": [],
+        "dislikes": [],
     }
     base_data.update(overrides)
     return base_data

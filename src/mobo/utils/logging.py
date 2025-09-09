@@ -158,6 +158,7 @@ def setup_logging(
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(numeric_level)
 
+    console_formatter: logging.Formatter
     if json_logs:
         console_formatter = JSONFormatter()
     else:
@@ -189,6 +190,7 @@ def setup_logging(
         )
         file_handler.setLevel(numeric_level)
 
+        file_formatter: logging.Formatter
         if json_logs:
             file_formatter = JSONFormatter()
         else:
@@ -456,7 +458,7 @@ def get_log_stats() -> Dict[str, Any]:
     """
     root_logger = logging.getLogger()
 
-    stats = {
+    stats: dict[str, Any] = {
         "level": logging.getLevelName(root_logger.level),
         "handlers": [],
         "loggers": {},

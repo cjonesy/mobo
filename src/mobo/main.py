@@ -9,9 +9,9 @@ import signal
 import sys
 from typing import Optional
 
-from bot.config import get_settings, validate_required_settings
-from bot.discord.client import BotClient
-from bot.utils.logging import setup_logging
+from mobo.config import get_settings, validate_required_settings
+from mobo.discord.client import BotClient
+from mobo.utils.logging import setup_logging
 
 
 class BotApplication:
@@ -136,7 +136,7 @@ def init_db():
     """Entry point for database initialization using modern LangGraph patterns."""
 
     async def _init():
-        from bot.memory.langgraph_memory import LangGraphMemory
+        from mobo.memory.langgraph_memory import LangGraphMemory
 
         setup_logging()
         logger = logging.getLogger(__name__)
@@ -148,7 +148,7 @@ def init_db():
 
             # Initialize LangGraph memory system (handles both checkpointing and user profiles)
             memory_system = LangGraphMemory(
-                database_url=settings.database_url,
+                database_url=settings.database_url_for_langgraph,
                 openai_api_key=settings.openai_api_key.get_secret_value(),
             )
             await memory_system.initialize()

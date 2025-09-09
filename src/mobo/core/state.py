@@ -6,7 +6,7 @@ providing explicit state management and easy debugging.
 """
 
 from typing import TypedDict, List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, UTC
 
 
 class BotState(TypedDict):
@@ -63,8 +63,8 @@ class BotState(TypedDict):
     # RESPONSE GENERATION (Set by response generator node)
     # =============================================================================
 
-    final_response: str
-    """The final text response to send to Discord"""
+    final_response: str | None
+    """The final text response to send to Discord (None if bot should stay silent)"""
 
     # =============================================================================
     # METADATA (For monitoring and debugging)
@@ -113,11 +113,8 @@ class ToolResult(TypedDict):
 class UserProfileData(TypedDict):
     """Structure for user profile information."""
 
-    user_id: str
+    discord_user_id: str
     """Discord user ID"""
-
-    display_name: str
-    """User's display name"""
 
     response_tone: str
     """Bot's response tone for this user (friendly, neutral, hostile, etc.)"""
@@ -131,7 +128,7 @@ class UserProfileData(TypedDict):
     aliases: List[str]
     """Alternative names the user wants to be called"""
 
-    last_seen: datetime
+    last_seen: Optional[datetime]
     """When user was last active"""
 
 
@@ -175,7 +172,7 @@ def create_initial_state(
         BotState with all required fields initialized
     """
     if timestamp is None:
-        timestamp = datetime.now()
+        timestamp = datetime.now(UTC)
 
     return BotState(
         # Input data
@@ -243,7 +240,7 @@ def format_state_summary(state: BotState) -> str:
         f"🗨️  Message: {state['user_message'][:50]}{'...' if len(state['user_message']) > 50 else ''}",
         f"👤 User: {state['user_id']} in #{state['channel_id']}",
         f"🤖 Chatbot: {len(state.get('messages', []))} messages generated",
-        f"💬 Response: {state['final_response'][:100]}{'...' if len(state['final_response']) > 100 else ''}",
+        f"💬 Response: {state['final_response'][:100] if state['final_response'] else 'None'}{'...' if state['final_response'] and len(state['final_response']) > 100 else ''}",
         f"⏱️  Execution: {state['execution_time']:.2f}s, {state['model_calls']} LLM calls",
         f"🛤️  Path: {' → '.join(state['workflow_path'])}",
     ]

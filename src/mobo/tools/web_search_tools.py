@@ -7,8 +7,8 @@ the web and return relevant results.
 
 import logging
 from typing import Optional
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
+from googleapiclient.discovery import build  # type: ignore[import-untyped]
+from googleapiclient.errors import HttpError  # type: ignore[import-untyped]
 
 from ..config import get_settings
 from .common import registered_tool
@@ -272,4 +272,6 @@ async def search_images(
     Returns:
         Formatted string containing image search results with titles and URLs
     """
-    return await _search_images_impl(query, num_results, image_size, image_type, safe_search)
+    return await _search_images_impl(
+        query, num_results, image_size, image_type, safe_search
+    )

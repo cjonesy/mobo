@@ -3,10 +3,10 @@ Tests for memory models and database functionality.
 """
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from unittest.mock import patch, MagicMock
 
-from bot.memory.models import (
+from mobo.memory.models import (
     User,
     Conversation,
     UserLike,
@@ -19,8 +19,6 @@ from bot.memory.models import (
     get_user_by_discord_id,
     get_recent_conversations,
 )
-# Legacy memory tests - now using LangGraph built-in patterns
-# from bot.memory.langgraph_memory import LangGraphMemory
 
 
 class TestMemoryModels:
@@ -140,7 +138,7 @@ class TestMemoryModels:
 
     def test_validate_user_data_valid(self):
         """Test user data validation with valid data."""
-        valid_data = {"discord_user_id": "123456789", "display_name": "TestUser"}
+        valid_data = {"discord_user_id": "123456789"}
 
         is_valid, error = validate_user_data(valid_data)
         assert is_valid
@@ -148,7 +146,7 @@ class TestMemoryModels:
 
     def test_validate_user_data_invalid_user_id(self):
         """Test user data validation with invalid user ID."""
-        invalid_data = {"discord_user_id": "not_a_number", "display_name": "TestUser"}
+        invalid_data = {"discord_user_id": "not_a_number"}
 
         is_valid, error = validate_user_data(invalid_data)
         assert not is_valid
@@ -161,7 +159,7 @@ class TestConversationAnalytics:
     @pytest.mark.asyncio
     async def test_bot_interaction_tracking(self, test_db_session):
         """Test bot interaction tracking."""
-        from bot.memory.models import BotInteraction
+        from mobo.memory.models import BotInteraction
 
         interaction = BotInteraction(
             bot_user_id="bot_123",
@@ -181,13 +179,13 @@ class TestConversationAnalytics:
     @pytest.mark.asyncio
     async def test_conversation_summary(self, test_db_session):
         """Test conversation summary storage."""
-        from bot.memory.models import ConversationSummary
+        from mobo.memory.models import ConversationSummary
 
         summary = ConversationSummary(
             channel_id="channel_123",
             guild_id="guild_456",
-            start_time=datetime.utcnow() - timedelta(hours=2),
-            end_time=datetime.utcnow(),
+            start_time=datetime.now(UTC) - timedelta(hours=2),
+            end_time=datetime.now(UTC),
             summary="Users discussed programming topics",
             message_count=15,
         )

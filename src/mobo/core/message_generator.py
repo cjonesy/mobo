@@ -96,7 +96,7 @@ async def message_generator_node(
         llm = ChatOpenAI(
             model=response_model,
             temperature=response_temp,
-            api_key=settings.openrouter_api_key.get_secret_value(),
+            api_key=settings.openrouter_api_key,
             base_url=settings.openrouter_base_url,
         )
 

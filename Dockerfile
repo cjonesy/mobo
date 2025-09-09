@@ -19,4 +19,4 @@ RUN useradd -m botuser
 USER botuser
 
 # Command to run the bot
-CMD ["python", "-m", "bot.main"]
+CMD ["python", "-m", "mobo.main"]

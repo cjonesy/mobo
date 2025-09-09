@@ -8,11 +8,8 @@ deployment easier. Here's how to use each script:
 ### Basic Usage
 
 ```bash
-# Initialize database with full verification
+# Initialize database (creates tables + verifies setup)
 python scripts/init_db.py
-
-# Just create tables (faster for development)
-python scripts/init_db.py --create-only
 
 # Only verify existing database
 python scripts/init_db.py --verify-only

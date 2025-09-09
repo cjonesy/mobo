@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DiscordContext:
     """Discord context information for tool execution."""
+
     guild_id: Optional[str] = None
     channel_id: Optional[str] = None
     user_id: Optional[str] = None

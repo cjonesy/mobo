@@ -11,13 +11,16 @@ import logging
 import sys
 from pathlib import Path
 
-# Add the project root to the Python path
+# Add the src directory to the Python path for imports
 project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+src_path = project_root / "src"
+sys.path.insert(0, str(src_path))
 
-from bot.config import get_settings, validate_required_settings
-from bot.memory.langgraph_memory import LangGraphMemory
-from bot.utils.logging import setup_logging
+from mobo.config import get_settings, validate_required_settings
+from mobo.memory.langgraph_memory import LangGraphMemory
+from mobo.memory.models import create_tables_async, Base
+from mobo.utils.logging import setup_logging
+from sqlalchemy.ext.asyncio import create_async_engine
 
 logger = logging.getLogger(__name__)
 
@@ -30,14 +33,24 @@ class DatabaseInitializer:
         self.memory_system = None
 
     async def initialize_all(self):
-        """Initialize LangGraph memory system."""
-        logger.info("🗄️ Starting LangGraph database initialization...")
+        """Initialize database schema and LangGraph memory system."""
+        logger.info("🗄️ Starting database initialization...")
 
         try:
+            # Create all application tables using the proper function from models
+            logger.info("🏗️ Creating application tables...")
+            engine = create_async_engine(self.settings.database_url_for_sqlalchemy)
+
+            try:
+                await create_tables_async(engine)
+            finally:
+                await engine.dispose()
+            logger.info("✅ Application tables created")
+
             # Initialize LangGraph memory system (handles both checkpointing and user profiles)
             logger.info("🚀 Initializing LangGraph memory system...")
             self.memory_system = LangGraphMemory(
-                database_url=self.settings.database_url,
+                database_url=self.settings.database_url_for_langgraph,
                 openai_api_key=self.settings.openai_api_key.get_secret_value(),
             )
             await self.memory_system.initialize()
@@ -63,7 +76,7 @@ class DatabaseInitializer:
         try:
             # Test LangGraph memory system
             self.memory_system = LangGraphMemory(
-                database_url=self.settings.database_url,
+                database_url=self.settings.database_url_for_langgraph,
                 openai_api_key=self.settings.openai_api_key.get_secret_value(),
             )
             await self.memory_system.initialize()
@@ -136,30 +149,8 @@ async def main():
         sys.exit(1)
 
 
-def create_database_only():
-    """Create LangGraph database setup without verification (faster for development)."""
-
-    async def _create():
-        setup_logging()
-        logger.info("🏗️ Setting up LangGraph database...")
-
-        settings = get_settings()
-
-        # Initialize LangGraph memory system
-        memory_system = LangGraphMemory(settings.database_url)
-        await memory_system.initialize()
-        await memory_system.close()
-
-        logger.info("✅ LangGraph database setup completed")
-
-    asyncio.run(_create())
-
-
 def reset_database():
     """Reset the database (WARNING: This will delete all data!)."""
-    import asyncio
-    from sqlalchemy.ext.asyncio import create_async_engine
-    from bot.memory.models import Base
 
     async def _reset():
         setup_logging()
@@ -175,7 +166,7 @@ def reset_database():
 
         logger.info("🗑️ Resetting database...")
 
-        engine = create_async_engine(settings.database_url)
+        engine = create_async_engine(settings.database_url_for_sqlalchemy)
 
         try:
             async with engine.begin() as conn:
@@ -203,11 +194,6 @@ if __name__ == "__main__":
         "--verify-only", action="store_true", help="Only verify existing database setup"
     )
     parser.add_argument(
-        "--create-only",
-        action="store_true",
-        help="Only create tables, skip verification",
-    )
-    parser.add_argument(
         "--reset",
         action="store_true",
         help="Reset database (WARNING: Deletes all data!)",
@@ -217,8 +203,6 @@ if __name__ == "__main__":
 
     if args.reset:
         reset_database()
-    elif args.create_only:
-        create_database_only()
     elif args.verify_only:
 
         async def verify_only():

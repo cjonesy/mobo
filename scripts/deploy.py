@@ -14,12 +14,13 @@ import time
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-# Add the project root to the Python path
+# Add the src directory to the Python path for imports
 project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+src_path = project_root / "src"
+sys.path.insert(0, str(src_path))
 
-from bot.config import get_settings, validate_required_settings, print_config_summary
-from bot.utils.logging import setup_logging
+from mobo.config import get_settings, validate_required_settings, print_config_summary
+from mobo.utils.logging import setup_logging
 
 logger = logging.getLogger(__name__)
 
@@ -166,9 +167,12 @@ class DeploymentManager:
 
         # Check database connectivity
         try:
-            from bot.memory.langgraph_memory import LangGraphMemory
+            from mobo.memory.langgraph_memory import LangGraphMemory
 
-            memory = LangGraphMemory(self.settings.database_url)
+            memory = LangGraphMemory(
+                database_url=self.settings.database_url_for_langgraph,
+                openai_api_key=self.settings.openai_api_key.get_secret_value(),
+            )
             await memory.initialize()
 
             # Test database operations - check if user profile can be created/retrieved
@@ -177,7 +181,9 @@ class DeploymentManager:
                 health_status["database"] = True
                 logger.info("✅ Database check passed")
             else:
-                logger.error("❌ Database check failed: Could not retrieve test profile")
+                logger.error(
+                    "❌ Database check failed: Could not retrieve test profile"
+                )
 
             await memory.close()
 

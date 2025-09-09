@@ -6,14 +6,14 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch, AsyncMock
 
-from bot.tools.rate_limiting import (
+from mobo.tools.rate_limiting import (
     rate_limited,
     check_and_increment_rate_limit,
     get_rate_limit_status,
     RateLimitExceeded,
     cleanup_expired_rate_limits,
 )
-from bot.memory.models import RateLimit
+from mobo.memory.models import RateLimit
 
 
 class MockAsyncSession:
@@ -105,7 +105,7 @@ def mock_rate_limit_session(mock_session):
 class TestRateLimiting:
     """Test suite for rate limiting functionality."""
 
-    @patch("bot.tools.rate_limiting.get_rate_limit_session")
+    @patch("mobo.tools.rate_limiting.get_rate_limit_session")
     @pytest.mark.asyncio
     async def test_first_request_creates_rate_limit(
         self, mock_get_session, mock_rate_limit_session
@@ -124,7 +124,7 @@ class TestRateLimiting:
         assert result["period_type"] == "hour"
         assert result["user_id"] is None
 
-    @patch("bot.tools.rate_limiting.get_rate_limit_session")
+    @patch("mobo.tools.rate_limiting.get_rate_limit_session")
     @pytest.mark.asyncio
     async def test_subsequent_requests_increment_usage(
         self, mock_get_session, mock_session
@@ -159,7 +159,7 @@ class TestRateLimiting:
         assert result["current_usage"] == 5  # 3 + 2
         assert result["remaining"] == 5  # 10 - 5
 
-    @patch("bot.tools.rate_limiting.get_rate_limit_session")
+    @patch("mobo.tools.rate_limiting.get_rate_limit_session")
     @pytest.mark.asyncio
     async def test_rate_limit_exceeded_raises_exception(
         self, mock_get_session, mock_session
@@ -196,7 +196,7 @@ class TestRateLimiting:
         assert exc_info.value.resource == "test-api"
         assert exc_info.value.limit == 10
 
-    @patch("bot.tools.rate_limiting.get_rate_limit_session")
+    @patch("mobo.tools.rate_limiting.get_rate_limit_session")
     @pytest.mark.asyncio
     async def test_user_specific_rate_limiting(self, mock_get_session, mock_session):
         """Test user-specific rate limiting."""
@@ -234,7 +234,7 @@ class TestRateLimiting:
         assert result2["current_usage"] == 1
         assert result2["user_id"] == "user456"
 
-    @patch("bot.tools.rate_limiting.get_rate_limit_session")
+    @patch("mobo.tools.rate_limiting.get_rate_limit_session")
     @pytest.mark.asyncio
     async def test_get_rate_limit_status(self, mock_get_session, mock_session):
         """Test getting rate limit status."""
@@ -269,7 +269,7 @@ class TestRateLimiting:
         assert status["remaining"] == 13
         assert status["is_exceeded"] is False
 
-    @patch("bot.tools.rate_limiting.get_rate_limit_session")
+    @patch("mobo.tools.rate_limiting.get_rate_limit_session")
     @pytest.mark.asyncio
     async def test_get_rate_limit_status_not_found(
         self, mock_get_session, mock_session
@@ -288,7 +288,7 @@ class TestRateLimiting:
         status = await get_rate_limit_status("nonexistent", "day")
         assert status is None
 
-    @patch("bot.tools.rate_limiting.get_rate_limit_session")
+    @patch("mobo.tools.rate_limiting.get_rate_limit_session")
     @pytest.mark.asyncio
     async def test_rate_limited_decorator_success(self, mock_get_session, mock_session):
         """Test rate limited decorator with successful request."""
@@ -309,7 +309,7 @@ class TestRateLimiting:
         result = await test_function("hello")
         assert result == "Success: hello"
 
-    @patch("bot.tools.rate_limiting.get_rate_limit_session")
+    @patch("mobo.tools.rate_limiting.get_rate_limit_session")
     @pytest.mark.asyncio
     async def test_rate_limited_decorator_exceeded(
         self, mock_get_session, mock_session
@@ -349,7 +349,7 @@ class TestRateLimiting:
         assert "Rate limit reached" in result
         assert "decorator-exceeded" in result
 
-    @patch("bot.tools.rate_limiting.get_rate_limit_session")
+    @patch("mobo.tools.rate_limiting.get_rate_limit_session")
     @pytest.mark.asyncio
     async def test_rate_limited_decorator_with_cost(
         self, mock_get_session, mock_session

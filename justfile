@@ -76,7 +76,7 @@ install:
 # Run the bot locally (assumes external database)
 run:
     @echo "🤖 Starting Discord bot locally..."
-    uv run python -m bot.main
+    uv run python -m mobo.main
 
 # === TESTING & QUALITY ===
 
@@ -92,17 +92,17 @@ test:
 # Lint code
 lint:
     @echo "🔍 Linting code..."
-    uv run ruff check --fix bot/
+    uv run ruff check --fix src/
 
 # Format code
 format:
     @echo "🎨 Formatting code..."
-    uv run ruff format bot/
+    uv run ruff format src/
 
 # Type check code
 typecheck:
     @echo "🔎 Type checking code..."
-    uv run mypy bot/
+    uv run mypy src/
 
 # Run all quality checks
 check: lint typecheck test

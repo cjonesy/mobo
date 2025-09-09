@@ -32,8 +32,8 @@ dependencies = [
 ]
 
 [project.scripts]
-mobo-run = "bot.main:run_bot"
-mobo-dev = "bot.main:run_dev"
+mobo-run = "mobo.main:run_bot"
+mobo-dev = "mobo.main:run_dev"
 
 [tool.uv]
 dev-dependencies = [
@@ -44,10 +44,10 @@ dev-dependencies = [
 ]
 
 [tool.hatch.build]
-include = ["bot"]
+include = ["src/mobo"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["bot"]
+packages = ["src/mobo"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

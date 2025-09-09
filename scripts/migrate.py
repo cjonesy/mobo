@@ -10,16 +10,17 @@ import asyncio
 import logging
 import sys
 import textwrap
-from datetime import datetime
+from datetime import datetime, UTC
 from pathlib import Path
 from typing import List, Dict, Any
 
-# Add the project root to the Python path
+# Add the src directory to the Python path for imports
 project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root))
+src_path = project_root / "src"
+sys.path.insert(0, str(src_path))
 
-from bot.config import get_settings
-from bot.utils.logging import setup_logging
+from mobo.config import get_settings
+from mobo.utils.logging import setup_logging
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import text, Column, String, DateTime, Integer
 from sqlalchemy.ext.declarative import declarative_base
@@ -38,7 +39,7 @@ class Migration(Base):
     id = Column(Integer, primary_key=True)
     version = Column(String, unique=True, nullable=False)
     name = Column(String, nullable=False)
-    applied_at = Column(DateTime, default=datetime.utcnow)
+    applied_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
 
 class MigrationSystem:
@@ -46,7 +47,7 @@ class MigrationSystem:
 
     def __init__(self):
         self.settings = get_settings()
-        self.engine = create_async_engine(self.settings.database_url)
+        self.engine = create_async_engine(self.settings.database_url_for_sqlalchemy)
         self.session_factory = async_sessionmaker(self.engine, expire_on_commit=False)
         self.migrations_dir = Path(__file__).parent / "migrations"
         self.migrations_dir.mkdir(exist_ok=True)
@@ -73,7 +74,7 @@ class MigrationSystem:
                     "INSERT INTO migrations (version, name, applied_at) "
                     "VALUES (:version, :name, :applied_at)"
                 ),
-                {"version": version, "name": name, "applied_at": datetime.utcnow()},
+                {"version": version, "name": name, "applied_at": datetime.now(UTC)},
             )
             await session.commit()
 

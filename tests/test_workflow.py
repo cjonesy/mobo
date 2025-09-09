@@ -4,22 +4,21 @@ Tests for workflow execution and state management.
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime
 
-from bot.core.workflow import (
+from mobo.core.workflow import (
     create_bot_workflow,
     execute_workflow,
     validate_workflow_state,
     format_workflow_summary,
 )
-from bot.core.state import (
+from mobo.core.state import (
     BotState,
     create_initial_state,
     log_workflow_step,
     add_debug_info,
     format_state_summary,
 )
-from bot.core.response_extractor import response_extractor_node
+from mobo.core.response_extractor import response_extractor_node
 
 
 class TestBotState:
@@ -84,7 +83,7 @@ class TestWorkflowNodes:
 
     def test_should_continue(self, sample_bot_state):
         """Test the should_continue conditional edge function."""
-        from bot.core.workflow import should_continue
+        from mobo.core.workflow import should_continue
 
         # Test case: no messages - should go to message generator
         result = should_continue(sample_bot_state)

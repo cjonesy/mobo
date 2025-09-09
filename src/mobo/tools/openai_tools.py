@@ -45,6 +45,8 @@ async def generate_image(prompt: str) -> Tuple[str, Dict]:
 
         response = await client.images.generate(prompt=prompt, n=1, size="1024x1024")
 
+        if not response.data:
+            return ("Sorry, I couldn't generate an image. Please try again.", {})
         image_url = response.data[0].url
         logger.info(f"✅ Image generated successfully: {image_url}")
 

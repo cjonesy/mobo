@@ -110,9 +110,13 @@ DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/mobo
 
 # Bot Configuration
 MAX_BOT_RESPONSES=3
-TOP_K_MEMORY_RESULTS=5
-OPENAI_MODEL=gpt-4o
-OPENAI_TEMPERATURE=0.7
+CHATBOT_MODEL=openai/gpt-4o
+CHATBOT_TEMPERATURE=0.7
+
+# Memory and RAG Configuration
+SIMILARITY_THRESHOLD=0.7          # Minimum similarity for relevant conversations (0.0-1.0)
+RECENT_MESSAGES_LIMIT=5           # Number of recent messages in context (1-20)
+RELEVANT_MESSAGES_LIMIT=3         # Number of relevant messages in context (0-10)
 
 # Image Generation
 IMAGE_MODEL=dall-e-3
@@ -255,6 +259,31 @@ PERSONALITY_PROMPT_FILE="path/to/custom/personality.txt"
 # or
 PERSONALITY_PROMPT_URL="https://example.com/personality.txt"
 ```
+
+### Memory and RAG Configuration
+
+The bot uses semantic similarity to find relevant past conversations. You can
+tune these settings:
+
+```env
+# How similar past conversations need to be to include in context (0.0-1.0)
+# Lower values = more conversations included, higher values = only very similar ones
+SIMILARITY_THRESHOLD=0.7
+
+# Number of recent messages to always include (1-20)
+RECENT_MESSAGES_LIMIT=5
+
+# Number of semantically relevant messages to include (0-10)
+RELEVANT_MESSAGES_LIMIT=3
+```
+
+**Examples:**
+
+- `SIMILARITY_THRESHOLD=0.9` - Only include very similar conversations
+- `SIMILARITY_THRESHOLD=0.5` - Include more loosely related conversations
+- `RECENT_MESSAGES_LIMIT=10` - Include more recent context
+- `RELEVANT_MESSAGES_LIMIT=0` - Disable semantic search, only use recent
+  messages
 
 ### Database Configuration
 

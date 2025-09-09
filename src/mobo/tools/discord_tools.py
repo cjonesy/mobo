@@ -6,7 +6,7 @@ like reactions, channel management, user interactions, etc.
 """
 
 import logging
-from typing import List
+from typing import List, Union, Any
 from datetime import timedelta
 import discord
 
@@ -16,7 +16,7 @@ from .common import registered_tool
 logger = logging.getLogger(__name__)
 
 
-@registered_tool
+@registered_tool()
 async def list_custom_emoji() -> str:
     """
     List all custom emoji available to the bot for use in responses and reactions.
@@ -64,7 +64,7 @@ async def list_custom_emoji() -> str:
         return ""
 
 
-@registered_tool
+@registered_tool()
 async def add_reaction(emoji: str) -> str:
     """
     You can use this tool to add a reaction to the current message.
@@ -79,8 +79,8 @@ async def add_reaction(emoji: str) -> str:
     """
     try:
         context = get_discord_context()
-        if not context:
-            raise ValueError("No context available for reaction")
+        if not context or not context.message:
+            raise ValueError("No context or message available for reaction")
 
         logger.info(f"😀 Adding reaction: {emoji}")
         await context.message.add_reaction(emoji)
@@ -93,7 +93,7 @@ async def add_reaction(emoji: str) -> str:
         return ""
 
 
-@registered_tool
+@registered_tool()
 async def create_poll(
     question: str, options: List[str], duration_hours: int = 24
 ) -> str:
@@ -149,7 +149,7 @@ async def create_poll(
         return f"❌ Failed to create poll: {str(e)}"
 
 
-@registered_tool
+@registered_tool()
 async def set_activity(
     activity_type: str = "playing",
     activity_name: str = "",
@@ -224,7 +224,7 @@ async def set_activity(
         return f"❌ Failed to change activity: {str(e)}"
 
 
-@registered_tool
+@registered_tool()
 async def list_chat_users() -> str:
     """
     List all users in the current Discord channel or server.
@@ -257,17 +257,24 @@ async def list_chat_users() -> str:
         channel = context.message.channel
 
         # Get users differently based on channel type
+        members: List[Any] = []
         if hasattr(channel, "guild") and channel.guild:
             # Guild channel - get all members
             guild = channel.guild
-            members = guild.members
+            members = list(guild.members)
             location = f"server '{guild.name}'"
         else:
-            # DM or group DM - get participants
+            # DM or group DM - get participants (mixed User/ClientUser types)
             if hasattr(channel, "recipients"):
-                members = list(channel.recipients) + [context.client_user]
+                # recipients is a list of User objects
+                for recipient in channel.recipients:
+                    members.append(recipient)
+                if context.client_user:
+                    members.append(context.client_user)
             else:
-                members = [context.message.author, context.client_user]
+                members.append(context.message.author)
+                if context.client_user:
+                    members.append(context.client_user)
             location = "this chat"
 
         # Separate humans and bots
@@ -275,13 +282,19 @@ async def list_chat_users() -> str:
         bots = []
 
         for member in members:
+            # Handle different member types safely with fallbacks
+            display_name = getattr(member, "display_name", "Unknown")
+            username = getattr(member, "name", "Unknown")
+            user_id = getattr(member, "id", "Unknown")
+            is_bot = getattr(member, "bot", False)
+
             user_info = {
-                "name": member.display_name,
-                "username": member.name,
-                "id": member.id,
+                "name": str(display_name),
+                "username": str(username),
+                "id": str(user_id),
             }
 
-            if member.bot:
+            if is_bot:
                 bots.append(user_info)
             else:
                 humans.append(user_info)
@@ -323,7 +336,7 @@ async def list_chat_users() -> str:
         return f"Failed to list users: {str(e)}"
 
 
-@registered_tool
+@registered_tool()
 async def get_user_profile(user_id: str) -> str:
     """
     Get detailed profile information for a specific Discord user.
@@ -353,23 +366,27 @@ async def get_user_profile(user_id: str) -> str:
             return f"Invalid user ID format: {user_id}"
 
         # Get user from guild if in server, otherwise try to fetch from client
-        user = None
+        user: Any = None
         member = None
 
         if context.message.guild:
             # Try to get as guild member first
             try:
                 member = context.message.guild.get_member(user_id_int)
-                user = member
+                if member:
+                    user = member
             except (AttributeError, TypeError):
                 pass
 
         # If not found as member, try to get as user from client
-        if not user:
+        if not user and context.client:
             try:
                 user = await context.client.fetch_user(user_id_int)
             except (discord.NotFound, discord.HTTPException, AttributeError):
                 return f"User with ID {user_id} not found or not accessible"
+
+        if not user:
+            return f"User with ID {user_id} not found or not accessible"
 
         # Build profile information
         result = []

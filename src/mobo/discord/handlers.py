@@ -8,7 +8,7 @@ and error scenarios, keeping the main client clean and focused.
 import logging
 import tempfile
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Callable, IO
 from dataclasses import dataclass
 
 import discord
@@ -16,6 +16,7 @@ import httpx
 
 from ..core.workflow import execute_workflow, format_workflow_summary
 from ..tools.discord_context import set_discord_context, clear_discord_context
+from ..config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -33,10 +34,11 @@ class ProcessingContext:
     """Context needed for message processing."""
 
     workflow: Any
-    bot_user: discord.User
+    bot_user: discord.ClientUser
     debug_mode: bool
-    record_execution_time: callable
+    record_execution_time: Callable[[float], None]
     client: discord.Client
+    memory_system: Any = None
 
 
 class MessageProcessor:
@@ -74,9 +76,11 @@ class MessageProcessor:
 
             # Step 2: Process the message
             async with message.channel.typing():
-                response_text, response_files, execution_time = (
-                    await self._process_message(message)
-                )
+                (
+                    response_text,
+                    response_files,
+                    execution_time,
+                ) = await self._process_message(message)
 
             # Step 3: Send response if we have content
             if response_text and response_text.strip() or response_files:
@@ -105,13 +109,13 @@ class MessageProcessor:
 
     async def _should_respond(self, message: discord.Message) -> tuple[bool, str]:
         """Determine whether the bot should respond to a message."""
-        # Ignore bot users
-        if message.author.bot:
-            return False, "Message from a bot"
-
         # Ignore messages from the bot itself
         if message.author == self.context.bot_user:
             return False, "Message from bot itself"
+
+        # Handle bot users with interaction limiting
+        if message.author.bot:
+            return await self._should_respond_to_bot(message)
 
         # DMs: always respond
         if message.guild is None:
@@ -138,6 +142,110 @@ class MessageProcessor:
 
         return False, "No bot mention or reply in guild channel"
 
+    async def _should_respond_to_bot(
+        self, message: discord.Message
+    ) -> tuple[bool, str]:
+        """
+        Determine if we should respond to another bot, with interaction limiting and cooldown.
+
+        Args:
+            message: Discord message from a bot
+
+        Returns:
+            Tuple of (should_respond, reason)
+        """
+        settings = get_settings()
+
+        # Check if we should respond based on mentions/replies first
+        should_respond_basic, basic_reason = await self._check_bot_mention_or_reply(
+            message
+        )
+        if not should_respond_basic:
+            return False, basic_reason
+
+        # If max_bot_responses is 0, unlimited responses are allowed
+        if settings.max_bot_responses == 0:
+            return True, basic_reason
+
+        # Check interaction limits and cooldown
+        if hasattr(self.context, "memory_system") and self.context.memory_system:
+            try:
+                (
+                    can_respond,
+                    current_count,
+                    status_reason,
+                ) = await self.context.memory_system.should_respond_to_bot(
+                    str(message.author.id),
+                    str(message.channel.id),
+                    settings.bot_response_cooldown_seconds,
+                )
+
+                if not can_respond or current_count >= settings.max_bot_responses:
+                    return (
+                        False,
+                        f"Bot interaction limit reached ({current_count}/{settings.max_bot_responses}) - {status_reason}",
+                    )
+
+                # Track this interaction
+                new_count = await self.context.memory_system.track_bot_interaction(
+                    str(message.author.id),
+                    str(message.channel.id),
+                    str(message.guild.id) if message.guild else None,
+                )
+                logger.info(
+                    f"🤖 Responding to bot {message.author.name} ({new_count}/{settings.max_bot_responses})"
+                )
+
+                return (
+                    True,
+                    f"{basic_reason} - interaction {new_count}/{settings.max_bot_responses}",
+                )
+
+            except Exception as e:
+                logger.error(f"Error checking bot interaction limits: {e}")
+                # Fall back to basic response
+                return True, f"{basic_reason} (fallback due to error)"
+        else:
+            # No memory system available, fall back to basic check
+            return True, f"{basic_reason} (no memory system)"
+
+    async def _check_bot_mention_or_reply(
+        self, message: discord.Message
+    ) -> tuple[bool, str]:
+        """
+        Check if a bot message mentions us or is a reply to us.
+
+        Args:
+            message: Discord message from a bot
+
+        Returns:
+            Tuple of (should_respond, reason)
+        """
+        # DMs from bots: respond (but will be limited by interaction count)
+        if message.guild is None:
+            return True, "Direct message from bot"
+
+        # In guilds: respond if mentioned
+        try:
+            if self.context.bot_user and self.context.bot_user in message.mentions:
+                return True, "Bot mentioned us"
+        except Exception:
+            pass
+
+        # Or if it's a reply to us
+        try:
+            if message.reference and message.reference.resolved:
+                referenced = message.reference.resolved
+                if (
+                    isinstance(referenced, discord.Message)
+                    and referenced.author == self.context.bot_user
+                ):
+                    return True, "Bot replied to us"
+        except Exception:
+            pass
+
+        return False, "Bot didn't mention or reply to us"
+
     async def _process_message(
         self, message: discord.Message
     ) -> tuple[str, list[Dict[str, Any]], float]:
@@ -149,7 +257,7 @@ class MessageProcessor:
         """
         if not self.context.workflow:
             logger.error("❌ Workflow not initialized")
-            return None, [], 0.0
+            return "", [], 0.0
 
         # Clean the message content
         cleaned_content = self._clean_message_content(message.content)
@@ -190,7 +298,7 @@ class MessageProcessor:
             )
 
         # Format response
-        response_text = final_state.get("final_response")
+        response_text = final_state.get("final_response") or ""
         response_files = []
 
         # Check for artifacts from tools (images, files, etc.)
@@ -212,7 +320,7 @@ class MessageProcessor:
 
     async def _prepare_discord_files(
         self, file_data: list[Dict[str, Any]]
-    ) -> tuple[list[discord.File], list[tempfile.NamedTemporaryFile]]:
+    ) -> tuple[list[discord.File], list[Any]]:
         """
         Download and prepare files for Discord upload.
 
@@ -223,7 +331,7 @@ class MessageProcessor:
             Tuple of (discord_files, temp_files) for upload and cleanup
         """
         discord_files: list[discord.File] = []
-        temp_files: list[tempfile.NamedTemporaryFile] = []
+        temp_files: list[Any] = []
 
         for file_info in file_data:
             try:

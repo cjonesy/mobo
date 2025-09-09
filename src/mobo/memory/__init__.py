@@ -16,7 +16,7 @@ __all__ = [
     "get_config_for_thread",
     # Legacy database models (for migration compatibility)
     "Base",
-    "Conversation", 
+    "Conversation",
     "User",
     "UserLike",
     "UserDislike",

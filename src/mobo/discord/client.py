@@ -41,17 +41,9 @@ class BotClient(discord.Client):
         super().__init__(intents=intents)
 
         self.settings = settings
-
-        # Modern LangGraph memory system
         self.memory_system: Optional[LangGraphMemory] = None
-
-        # Workflow (will be created after memory components are initialized)
         self.workflow = None
-
-        # Statistics tracking
         self.stats = {"total_execution_time": 0.0}
-
-        # Services (will be created after workflow is initialized)
         self.message_processor: Optional[MessageProcessor] = None
         self.error_handler: Optional[ErrorHandler] = None
         self.admin_handler: Optional[AdminHandler] = None
@@ -68,7 +60,7 @@ class BotClient(discord.Client):
 
             logger.info("🚀 Initializing modern LangGraph memory system...")
             self.memory_system = LangGraphMemory(
-                database_url=self.settings.database_url,
+                database_url=self.settings.database_url_for_langgraph,
                 openai_api_key=self.settings.openai_api_key.get_secret_value(),
             )
             await self.memory_system.initialize()
@@ -79,20 +71,18 @@ class BotClient(discord.Client):
                 memory_system=self.memory_system,
             )
 
-            # Create callback for recording execution time
             def record_execution_time(time: float):
                 self.stats["total_execution_time"] += time
 
-            # Create processing context for message processor
             processing_context = ProcessingContext(
                 workflow=self.workflow,
                 bot_user=self.user,
                 debug_mode=self.settings.debug_mode,
                 record_execution_time=record_execution_time,
                 client=self,
+                memory_system=self.memory_system,
             )
 
-            # Create services
             self.message_processor = MessageProcessor(processing_context)
             self.error_handler = ErrorHandler()
             self.admin_handler = AdminHandler(self.settings, self.error_handler)

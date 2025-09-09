@@ -15,6 +15,7 @@ from datetime import datetime, UTC
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.store.postgres import PostgresStore
+from langchain_core.runnables import RunnableConfig
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from openai import AsyncOpenAI
@@ -36,10 +37,10 @@ class LangGraphMemory:
 
     def __init__(self, database_url: str, openai_api_key: str):
         self.database_url = database_url
-        self.checkpointer = None
-        self.store = None
-        self._checkpointer_manager = None
-        self._store_manager = None
+        self.checkpointer: Any = None
+        self.store: Any = None
+        self._checkpointer_manager: Any = None
+        self._store_manager: Any = None
         self._initialized = False
         self.engine = create_engine(database_url)
         self.SessionLocal = sessionmaker(bind=self.engine)
@@ -49,7 +50,7 @@ class LangGraphMemory:
 
         logger.info("🚀 Memory initialized with PostgreSQL LangGraph patterns")
 
-    async def initialize(self):
+    async def initialize(self) -> None:
         """Initialize the LangGraph PostgreSQL backends with proper context manager handling."""
         if self._initialized:
             return
@@ -86,14 +87,21 @@ class LangGraphMemory:
         """
         Get user profile using LangGraph store (cross-thread memory).
 
+        This stores bot-specific user preferences, not Discord user data.
+        Use the get_user_profile Discord tool for Discord-specific info.
+
         Args:
             user_id: Discord user ID
 
         Returns:
-            User profile dictionary
+            User profile dictionary with bot-specific preferences
         """
         try:
             # Use LangGraph store to get cross-thread user data
+            if not self.store:
+                raise RuntimeError(
+                    "LangGraph memory not initialized. Call initialize() first."
+                )
             items = await self.store.aget(namespace="user_profiles", key=user_id)
 
             if items:
@@ -102,36 +110,35 @@ class LangGraphMemory:
                     return items[0].value
                 elif hasattr(items, "value"):
                     return items.value
-            else:
-                # Create default profile
-                default_profile = {
-                    "discord_user_id": user_id,
-                    "display_name": f"User_{user_id[:8]}",
-                    "response_tone": "neutral",
-                    "likes": [],
-                    "dislikes": [],
-                    "created_at": None,  # Will be set by store
-                }
+                # If items exists but doesn't match expected format, fall through
 
-                # Store default profile
-                await self.store.aput(
-                    namespace="user_profiles", key=user_id, value=default_profile
-                )
+            # Create default profile with bot-specific preferences only
+            default_profile: dict[str, Any] = {
+                "discord_user_id": user_id,
+                "response_tone": "neutral",
+                "likes": [],
+                "dislikes": [],
+                "created_at": None,  # Will be set by store
+            }
 
-                return default_profile
+            # Store default profile
+            await self.store.aput(
+                namespace="user_profiles", key=user_id, value=default_profile
+            )
+
+            return default_profile
 
         except Exception as e:
             logger.error(f"Error getting user profile for {user_id}: {e}")
             # Return minimal default
             return {
                 "discord_user_id": user_id,
-                "display_name": f"User_{user_id[:8]}",
                 "response_tone": "neutral",
                 "likes": [],
                 "dislikes": [],
             }
 
-    async def update_user_profile(self, user_id: str, updates: Dict[str, Any]):
+    async def update_user_profile(self, user_id: str, updates: Dict[str, Any]) -> None:
         """
         Update user profile using LangGraph store.
 
@@ -140,6 +147,9 @@ class LangGraphMemory:
             updates: Profile updates to apply
         """
         try:
+            if not self.store:
+                raise ValueError("Store not initialized")
+
             # Get current profile
             current_profile = await self.get_user_profile(user_id)
 
@@ -156,7 +166,7 @@ class LangGraphMemory:
         except Exception as e:
             logger.error(f"Error updating user profile for {user_id}: {e}")
 
-    async def _generate_embedding(self, text: str) -> List[float]:
+    async def _generate_embedding(self, text: str) -> List[float] | None:
         """
         Generate embedding for text using OpenAI's embedding model.
 
@@ -185,10 +195,10 @@ class LangGraphMemory:
         self,
         user_id: str,
         channel_id: str,
-        guild_id: str = None,
-        user_message: str = None,
-        bot_response: str = None,
-    ):
+        guild_id: str | None = None,
+        user_message: str | None = None,
+        bot_response: str | None = None,
+    ) -> None:
         """
         Save conversation messages to the database.
 
@@ -210,6 +220,9 @@ class LangGraphMemory:
                 bot_embedding = await self._generate_embedding(bot_response)
 
             with self.SessionLocal() as session:
+                # Use single timestamp for both records to maintain consistency
+                timestamp = datetime.now(UTC)
+
                 # Save user message if provided
                 if user_message:
                     user_conv = Conversation(
@@ -220,7 +233,7 @@ class LangGraphMemory:
                         content=user_message,
                         message_length=len(user_message),
                         embedding=user_embedding,
-                        created_at=datetime.now(UTC),
+                        created_at=timestamp,
                     )
                     session.add(user_conv)
 
@@ -234,7 +247,7 @@ class LangGraphMemory:
                         content=bot_response,
                         message_length=len(bot_response),
                         embedding=bot_embedding,
-                        created_at=datetime.now(UTC),
+                        created_at=timestamp,
                     )
                     session.add(bot_conv)
 
@@ -291,7 +304,7 @@ class LangGraphMemory:
     async def search_relevant_conversations(
         self,
         query: str,
-        channel_id: str = None,
+        channel_id: str | None = None,
         limit: int = 5,
         similarity_threshold: float = 0.7,
     ) -> List[Dict[str, Any]]:
@@ -307,19 +320,14 @@ class LangGraphMemory:
         Returns:
             List of relevant conversation messages with similarity scores
         """
-        if not self.openai_client:
-            logger.warning("OpenAI client not configured - skipping semantic search")
-            return []
-
         try:
-            # Generate embedding for the query
             query_embedding = await self._generate_embedding(query)
             if not query_embedding:
                 return []
 
             with self.SessionLocal() as session:
                 # Build the query using SQLAlchemy ORM with proper vector operations
-                query = (
+                db_query = (
                     session.query(
                         Conversation.id,
                         Conversation.user_id,
@@ -344,13 +352,13 @@ class LangGraphMemory:
                 )
 
                 if channel_id:
-                    query = query.filter(Conversation.channel_id == channel_id)
+                    db_query = db_query.filter(Conversation.channel_id == channel_id)
 
-                query = query.order_by(
+                db_query = db_query.order_by(
                     (1 - Conversation.embedding.cosine_distance(query_embedding)).desc()
                 ).limit(limit)
 
-                rows = query.all()
+                rows = db_query.all()
 
             # Convert to dictionaries
             relevant_conversations = []
@@ -370,10 +378,10 @@ class LangGraphMemory:
                     }
                 )
 
-                logger.debug(
-                    f"Found {len(relevant_conversations)} relevant conversations for query: {query[:50]}..."
-                )
-                return relevant_conversations
+            logger.debug(
+                f"Found {len(relevant_conversations)} relevant conversations for query: {query[:50]}..."
+            )
+            return relevant_conversations
 
         except Exception as e:
             logger.error(f"Error searching relevant conversations: {e}")
@@ -425,7 +433,7 @@ class LangGraphMemory:
 
             if recent_messages:
                 context_parts.append("RECENT CONVERSATION:")
-                for msg in recent_messages[-3:]:  # Last 3 recent messages
+                for msg in recent_messages:
                     role_label = "User" if msg["role"] == "user" else "Bot"
                     context_parts.append(f"{role_label}: {msg['content']}")
 
@@ -460,7 +468,7 @@ class LangGraphMemory:
                 "total_context_messages": 0,
             }
 
-    async def _cleanup_managers(self):
+    async def _cleanup_managers(self) -> None:
         """Clean up context managers properly (async for AsyncPostgresSaver)."""
         if self._checkpointer_manager and self.checkpointer:
             try:
@@ -479,7 +487,159 @@ class LangGraphMemory:
         self._checkpointer_manager = None
         self._store_manager = None
 
-    async def close(self):
+    async def track_bot_interaction(
+        self, bot_user_id: str, channel_id: str, guild_id: str | None = None
+    ) -> int:
+        """
+        Track an interaction with another bot and return the current count.
+
+        Args:
+            bot_user_id: Discord user ID of the bot we're interacting with
+            channel_id: Discord channel ID
+            guild_id: Discord guild ID (optional for DMs)
+
+        Returns:
+            Current interaction count with this bot in this channel
+        """
+        try:
+            with self.SessionLocal() as session:
+                from .models import BotInteraction
+                from sqlalchemy import and_
+                from datetime import datetime, UTC
+
+                # Find existing interaction record
+                interaction = (
+                    session.query(BotInteraction)
+                    .filter(
+                        and_(
+                            BotInteraction.bot_user_id == bot_user_id,
+                            BotInteraction.channel_id == channel_id,
+                            BotInteraction.is_currently_active,
+                        )
+                    )
+                    .first()
+                )
+
+                if interaction:
+                    # Increment existing interaction
+                    interaction.interaction_count = int(interaction.interaction_count) + 1  # type: ignore[assignment]
+                    interaction.last_interaction = datetime.now(UTC)  # type: ignore[assignment]
+                else:
+                    # Create new interaction record
+                    interaction = BotInteraction(
+                        bot_user_id=bot_user_id,
+                        channel_id=channel_id,
+                        guild_id=guild_id,
+                        interaction_count=1,
+                        last_interaction=datetime.now(UTC),
+                        is_currently_active=True,
+                    )
+                    session.add(interaction)
+
+                session.commit()
+
+                logger.debug(
+                    f"Bot interaction tracked: {bot_user_id} in {channel_id}, count: {interaction.interaction_count}"
+                )
+                return int(interaction.interaction_count)
+
+        except Exception as e:
+            logger.error(f"Error tracking bot interaction: {e}")
+            return 0
+
+    async def should_respond_to_bot(
+        self, bot_user_id: str, channel_id: str, cooldown_seconds: int = 60
+    ) -> tuple[bool, int, str]:
+        """
+        Check if we should respond to a bot based on interaction limits and cooldown.
+
+        Args:
+            bot_user_id: Discord user ID of the bot
+            channel_id: Discord channel ID
+            cooldown_seconds: Seconds to wait after hitting limit before responding again
+
+        Returns:
+            Tuple of (should_respond, current_count, reason)
+        """
+        try:
+            with self.SessionLocal() as session:
+                from .models import BotInteraction
+                from sqlalchemy import and_
+                from datetime import datetime, UTC
+
+                # Find existing interaction record
+                interaction = (
+                    session.query(BotInteraction)
+                    .filter(
+                        and_(
+                            BotInteraction.bot_user_id == bot_user_id,
+                            BotInteraction.channel_id == channel_id,
+                            BotInteraction.is_currently_active,
+                        )
+                    )
+                    .first()
+                )
+
+                if not interaction:
+                    return True, 0, "No previous interactions"
+
+                # Check if enough time has passed since last interaction for cooldown reset
+                if cooldown_seconds > 0:
+                    time_since_last = (
+                        datetime.now(UTC) - interaction.last_interaction
+                    ).total_seconds()
+
+                    if time_since_last >= cooldown_seconds:
+                        # Reset the interaction count after cooldown
+                        interaction.interaction_count = 0  # type: ignore[assignment]
+                        interaction.is_currently_active = True  # type: ignore[assignment]
+                        session.commit()
+                        logger.info(
+                            f"🔄 Bot interaction cooldown expired for {bot_user_id} in {channel_id}"
+                        )
+                        return True, 0, "Cooldown expired, interactions reset"
+
+                return True, int(interaction.interaction_count), "Within limits"
+
+        except Exception as e:
+            logger.error(f"Error checking bot interaction status: {e}")
+            return True, 0, "Error occurred, allowing response"
+
+    async def get_bot_interaction_count(self, bot_user_id: str, channel_id: str) -> int:
+        """
+        Get current interaction count with a bot in a channel.
+
+        Args:
+            bot_user_id: Discord user ID of the bot
+            channel_id: Discord channel ID
+
+        Returns:
+            Current interaction count (0 if no interactions)
+        """
+        try:
+            with self.SessionLocal() as session:
+                from .models import BotInteraction
+                from sqlalchemy import and_
+
+                interaction = (
+                    session.query(BotInteraction)
+                    .filter(
+                        and_(
+                            BotInteraction.bot_user_id == bot_user_id,
+                            BotInteraction.channel_id == channel_id,
+                            BotInteraction.is_currently_active,
+                        )
+                    )
+                    .first()
+                )
+
+                return int(interaction.interaction_count) if interaction else 0
+
+        except Exception as e:
+            logger.error(f"Error getting bot interaction count: {e}")
+            return 0
+
+    async def close(self) -> None:
         """Close PostgreSQL memory resources with proper context manager cleanup."""
         try:
             await self._cleanup_managers()
@@ -489,7 +649,7 @@ class LangGraphMemory:
             logger.warning(f"Error closing LangGraph PostgreSQL memory: {e}")
 
 
-def get_config_for_thread(thread_id: str) -> Dict[str, Any]:
+def get_config_for_thread(thread_id: str) -> RunnableConfig:
     """
     Get LangGraph config for thread-based conversation.
 
@@ -499,4 +659,4 @@ def get_config_for_thread(thread_id: str) -> Dict[str, Any]:
     Returns:
         LangGraph configuration dictionary
     """
-    return {"configurable": {"thread_id": thread_id}}
+    return RunnableConfig(configurable={"thread_id": thread_id})

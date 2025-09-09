@@ -21,11 +21,16 @@ from sqlalchemy import (
     Index,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import declarative_base, relationship
-from pgvector.sqlalchemy import Vector
+from sqlalchemy.orm import declarative_base, relationship, DeclarativeBase
+from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
+from typing import TYPE_CHECKING
 
-# Create base class for all models
-Base = declarative_base()
+if TYPE_CHECKING:
+    # For type checking, define Base as a proper base class
+    from sqlalchemy.orm import DeclarativeBase as Base
+else:
+    # At runtime, use the actual declarative_base
+    Base = declarative_base()
 
 
 class TimestampMixin:
@@ -143,22 +148,11 @@ class User(Base, TimestampMixin):
     # Use Discord user ID as primary key
     discord_user_id = Column(String, primary_key=True)
 
-    # Basic user info
-    display_name = Column(String, nullable=False)
-    username = Column(String, nullable=True)  # Discord username
-    discriminator = Column(String, nullable=True)  # Discord discriminator (legacy)
-    avatar_url = Column(String, nullable=True)
-
     # Bot interaction settings
     response_tone = Column(
         String, nullable=False, default="neutral"
     )  # How bot should respond: friendly, neutral, hostile, etc.
-    interaction_count = Column(Integer, nullable=False, default=0)
     last_seen = Column(DateTime, nullable=True)
-
-    # Preferences and settings
-    preferred_language = Column(String, nullable=True, default="en")
-    timezone = Column(String, nullable=True)
 
     # Relationships
     likes = relationship(
@@ -171,11 +165,8 @@ class User(Base, TimestampMixin):
         "UserAlias", back_populates="user", cascade="all, delete-orphan"
     )
 
-    # Additional data
-    custom_data = Column(JSON, nullable=True)
-
     def __repr__(self):
-        return f"<User(discord_user_id={self.discord_user_id}, display_name={self.display_name})>"
+        return f"<User(discord_user_id={self.discord_user_id})>"
 
 
 class UserLike(Base, TimestampMixin):
@@ -408,26 +399,31 @@ class RateLimit(Base, TimestampMixin):
 
     def is_exceeded(self, increment: int = 1) -> bool:
         """Check if the rate limit has been or would be exceeded."""
-        return self.current_usage + increment > self.max_usage
+        return bool(self.current_usage + increment > self.max_usage)
 
     def can_make_requests(self, count: int = 1) -> bool:
         """Check if we can make the specified number of requests."""
-        return (self.current_usage + count) <= self.max_usage
+        return bool((self.current_usage + count) <= self.max_usage)
 
     def remaining_requests(self) -> int:
         """Get the number of remaining requests in this period."""
-        return max(0, self.max_usage - self.current_usage)
+        return max(0, int(self.max_usage) - int(self.current_usage))
 
     def time_until_reset(self) -> timedelta:
         """Get time until this rate limit period resets."""
         now = datetime.now(UTC)
-        if now >= self.period_end:
+        period_end = (
+            self.period_end
+            if isinstance(self.period_end, datetime)
+            else datetime.fromisoformat(str(self.period_end))
+        )
+        if now >= period_end:
             return timedelta(0)
-        return self.period_end - now
+        return period_end - now
 
     @classmethod
     def get_period_bounds(
-        cls, period_type: str, base_time: datetime = None
+        cls, period_type: str, base_time: datetime | None = None
     ) -> tuple[datetime, datetime]:
         """
         Get the start and end times for a rate limit period.
@@ -470,60 +466,6 @@ class RateLimit(Base, TimestampMixin):
 # =============================================================================
 
 
-def _setup_pgvector_sync(conn):
-    """Setup pgvector extension and indexes synchronously."""
-    from sqlalchemy import text
-
-    # Enable pgvector extension
-    conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-
-    # Create vector similarity index for conversations using cosine distance
-    conn.execute(
-        text(
-            """
-        CREATE INDEX IF NOT EXISTS idx_conversations_embedding_cosine
-        ON conversations USING ivfflat (embedding vector_cosine_ops)
-        WITH (lists = 100)
-    """
-        )
-    )
-
-
-async def _setup_pgvector_async(conn):
-    """Setup pgvector extension and indexes asynchronously."""
-    from sqlalchemy import text
-
-    # Enable pgvector extension
-    await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-
-    # Create vector similarity index for conversations using cosine distance
-    await conn.execute(
-        text(
-            """
-        CREATE INDEX IF NOT EXISTS idx_conversations_embedding_cosine
-        ON conversations USING ivfflat (embedding vector_cosine_ops)
-        WITH (lists = 100)
-    """
-        )
-    )
-
-
-def create_tables_if_not_exist(engine):
-    """
-    Create all tables if they don't exist, enable pgvector extension, and create indexes.
-
-    Args:
-        engine: SQLAlchemy engine
-    """
-    # Setup pgvector extension and indexes first
-    with engine.connect() as conn:
-        _setup_pgvector_sync(conn)
-        conn.commit()
-
-    # Create all tables
-    Base.metadata.create_all(engine)
-
-
 async def create_tables_async(engine):
     """
     Create all tables asynchronously, enable pgvector extension, and create indexes.
@@ -532,11 +474,24 @@ async def create_tables_async(engine):
         engine: Async SQLAlchemy engine
     """
     async with engine.begin() as conn:
-        # Setup pgvector extension and indexes
-        await _setup_pgvector_async(conn)
+        # Enable pgvector extension first
+        from sqlalchemy import text
+
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
 
         # Create all tables
         await conn.run_sync(Base.metadata.create_all)
+
+        # Create vector indexes after tables exist
+        await conn.execute(
+            text(
+                """
+            CREATE INDEX IF NOT EXISTS idx_conversations_embedding_cosine
+            ON conversations USING ivfflat (embedding vector_cosine_ops)
+            WITH (lists = 100)
+        """
+            )
+        )
 
 
 def get_conversation_by_id(session, conversation_id: str):
@@ -581,13 +536,14 @@ def get_recent_conversations(session, channel_id: str, limit: int = 10):
     Returns:
         List of Conversation objects
     """
-    return (
+    result = (
         session.query(Conversation)
         .filter(Conversation.channel_id == channel_id)
         .order_by(Conversation.created_at.desc())
         .limit(limit)
         .all()
     )
+    return result or []
 
 
 # =============================================================================
@@ -630,7 +586,7 @@ def validate_user_data(data: dict) -> tuple[bool, str]:
     Returns:
         Tuple of (is_valid, error_message)
     """
-    required_fields = ["discord_user_id", "display_name"]
+    required_fields = ["discord_user_id"]
 
     for field in required_fields:
         if field not in data or not data[field]:

@@ -46,7 +46,7 @@ async def search_gif(query: str, limit: int = 1) -> Tuple[str, Dict]:
 
         # Build Giphy API URL
         base_url = "https://api.giphy.com/v1/gifs/search"
-        params = {
+        params: dict[str, str | int] = {
             "api_key": api_key,
             "q": query,
             "limit": limit,

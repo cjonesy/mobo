@@ -8,7 +8,7 @@ across different resources, with persistent storage in the database.
 import logging
 from datetime import datetime, UTC
 from functools import wraps
-from typing import Optional, Callable, Any, Dict, TypeVar
+from typing import Optional, Callable, Any, Dict, TypeVar, cast
 from contextlib import asynccontextmanager
 
 from sqlalchemy import select
@@ -290,7 +290,7 @@ def rate_limited(
                     f"Limit resets in {reset_msg}."
                 )
 
-        return wrapper
+        return cast(F, wrapper)
 
     return decorator
 

@@ -4,7 +4,7 @@ Uses Pydantic Settings for type-safe configuration with environment variable sup
 """
 
 from functools import lru_cache
-from typing import Literal, List
+from typing import Literal, List, Any
 
 from pydantic import SecretStr, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -19,6 +19,10 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    def __init__(self, **kwargs: Any) -> None:
+        """Initialize settings, allowing environment variables to provide required fields."""
+        super().__init__(**kwargs)
 
     # =============================================================================
     # DISCORD CONFIGURATION
@@ -109,29 +113,26 @@ class Settings(BaseSettings):
 
     @field_validator("database_url")
     def validate_database_url(cls, v):
-        """Ensure database URL is PostgreSQL and convert from SQLAlchemy format to psycopg format."""
+        """Ensure database URL is PostgreSQL."""
         if not v.startswith("postgresql"):
             raise ValueError("Database URL must be PostgreSQL")
-
-        # Convert SQLAlchemy format (postgresql+asyncpg://) to psycopg format (postgresql://)
-        # LangGraph PostgreSQL connectors use psycopg, not SQLAlchemy
-        if v.startswith("postgresql+asyncpg://"):
-            v = v.replace("postgresql+asyncpg://", "postgresql://")
-            print(f"🔄 Converted SQLAlchemy format to psycopg format: {v}")
-
         return v
 
-    # =============================================================================
-    # BOT BEHAVIOR CONFIGURATION
-    # =============================================================================
-    max_bot_responses: int = Field(
-        default=3,
-        ge=1,
-        le=10,
-        description="Maximum consecutive responses to other bots before stopping",
-    )
+    @property
+    def database_url_for_langgraph(self) -> str:
+        """Get database URL in format expected by LangGraph (psycopg format)."""
+        # LangGraph PostgreSQL connectors use psycopg, not SQLAlchemy
+        if self.database_url.startswith("postgresql+asyncpg://"):
+            return self.database_url.replace("postgresql+asyncpg://", "postgresql://")
+        return self.database_url
 
-    # LangGraph manages conversation history automatically - no manual configuration needed
+    @property
+    def database_url_for_sqlalchemy(self) -> str:
+        """Get database URL in format expected by SQLAlchemy (with async driver)."""
+        # Ensure we have the async driver for SQLAlchemy
+        if self.database_url.startswith("postgresql://"):
+            return self.database_url.replace("postgresql://", "postgresql+asyncpg://")
+        return self.database_url
 
     # =============================================================================
     # EXTERNAL API CONFIGURATION
@@ -167,6 +168,44 @@ class Settings(BaseSettings):
         default=SecretStr(""), description="Google Custom Search API key"
     )
     google_cse_id: str = Field(default="", description="Google Custom Search Engine ID")
+
+    # =============================================================================
+    # MEMORY AND RAG CONFIGURATION
+    # =============================================================================
+    similarity_threshold: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Minimum similarity score for RAG context retrieval (0.0-1.0)",
+    )
+    recent_messages_limit: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Number of recent messages to include in context",
+    )
+    relevant_messages_limit: int = Field(
+        default=3,
+        ge=0,
+        le=10,
+        description="Number of semantically relevant messages to include in context",
+    )
+
+    # =============================================================================
+    # BOT INTERACTION LIMITS
+    # =============================================================================
+    max_bot_responses: int = Field(
+        default=5,
+        ge=0,
+        le=50,
+        description="Maximum number of responses to other bots before stopping (0 = unlimited)",
+    )
+    bot_response_cooldown_seconds: int = Field(
+        default=60,
+        ge=0,
+        le=3600,
+        description="Seconds to wait after hitting bot response limit before responding again (0 = no cooldown)",
+    )
 
     # =============================================================================
     # ADMIN AND DEVELOPMENT

@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import Mock, patch, AsyncMock
 from googleapiclient.errors import HttpError
 
-from bot.tools.web_search_tools import _search_web_impl, _search_images_impl
+from mobo.tools.web_search_tools import _search_web_impl, _search_images_impl
 
 
 @pytest.fixture
@@ -62,9 +62,9 @@ def mock_empty_response():
 class TestWebSearchTools:
     """Test suite for web search tools."""
 
-    @patch("bot.tools.web_search_tools.build")
-    @patch("bot.tools.web_search_tools.get_google_custom_search_api_key")
-    @patch("bot.tools.web_search_tools.get_google_cse_id")
+    @patch("mobo.tools.web_search_tools.build")
+    @patch("mobo.tools.web_search_tools.get_google_custom_search_api_key")
+    @patch("mobo.tools.web_search_tools.get_google_cse_id")
     @pytest.mark.asyncio
     async def test_search_web_success(
         self, mock_get_cse_id, mock_get_api_key, mock_build, mock_google_service
@@ -93,9 +93,9 @@ class TestWebSearchTools:
         assert "Python is a programming language" in result
         assert "Found 1000000 results in 0.45 seconds" in result
 
-    @patch("bot.tools.web_search_tools.build")
-    @patch("bot.tools.web_search_tools.get_google_custom_search_api_key")
-    @patch("bot.tools.web_search_tools.get_google_cse_id")
+    @patch("mobo.tools.web_search_tools.build")
+    @patch("mobo.tools.web_search_tools.get_google_custom_search_api_key")
+    @patch("mobo.tools.web_search_tools.get_google_cse_id")
     @pytest.mark.asyncio
     async def test_search_web_no_results(
         self, mock_get_cse_id, mock_get_api_key, mock_build, mock_empty_response
@@ -112,9 +112,9 @@ class TestWebSearchTools:
         # Verify result
         assert "No search results found for 'nonexistent query'" in result
 
-    @patch("bot.tools.web_search_tools.build")
-    @patch("bot.tools.web_search_tools.get_google_custom_search_api_key")
-    @patch("bot.tools.web_search_tools.get_google_cse_id")
+    @patch("mobo.tools.web_search_tools.build")
+    @patch("mobo.tools.web_search_tools.get_google_custom_search_api_key")
+    @patch("mobo.tools.web_search_tools.get_google_cse_id")
     @pytest.mark.asyncio
     async def test_search_web_api_error(
         self, mock_get_cse_id, mock_get_api_key, mock_build
@@ -142,7 +142,7 @@ class TestWebSearchTools:
         # Verify error handling
         assert "Search failed due to API error" in result
 
-    @patch("bot.tools.web_search_tools.get_google_custom_search_api_key")
+    @patch("mobo.tools.web_search_tools.get_google_custom_search_api_key")
     @pytest.mark.asyncio
     async def test_search_web_missing_api_key(self, mock_get_api_key):
         """Test web search with missing API key."""
@@ -159,9 +159,9 @@ class TestWebSearchTools:
             "Search unavailable: Google Custom Search API key not configured" in result
         )
 
-    @patch("bot.tools.web_search_tools.build")
-    @patch("bot.tools.web_search_tools.get_google_custom_search_api_key")
-    @patch("bot.tools.web_search_tools.get_google_cse_id")
+    @patch("mobo.tools.web_search_tools.build")
+    @patch("mobo.tools.web_search_tools.get_google_custom_search_api_key")
+    @patch("mobo.tools.web_search_tools.get_google_cse_id")
     @pytest.mark.asyncio
     async def test_search_images_success(
         self, mock_get_cse_id, mock_get_api_key, mock_build
@@ -198,7 +198,9 @@ class TestWebSearchTools:
         mock_build.return_value = service
 
         # Execute image search
-        result = await _search_images_impl("cute cats", num_results=2, image_size="medium")
+        result = await _search_images_impl(
+            "cute cats", num_results=2, image_size="medium"
+        )
 
         # Verify API was called correctly
         service.cse().list.assert_called_once_with(
@@ -221,10 +223,10 @@ class TestWebSearchTools:
         """Test that search parameters are properly validated."""
         with (
             patch(
-                "bot.tools.web_search_tools.get_google_custom_search_api_key"
+                "mobo.tools.web_search_tools.get_google_custom_search_api_key"
             ) as mock_get_api_key,
-            patch("bot.tools.web_search_tools.get_google_cse_id") as mock_get_cse_id,
-            patch("bot.tools.web_search_tools.build") as mock_build,
+            patch("mobo.tools.web_search_tools.get_google_cse_id") as mock_get_cse_id,
+            patch("mobo.tools.web_search_tools.build") as mock_build,
         ):
 
             mock_get_api_key.return_value = "test_api_key"
