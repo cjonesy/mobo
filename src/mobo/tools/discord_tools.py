@@ -6,7 +6,7 @@ like reactions, channel management, user interactions, etc.
 """
 
 import logging
-from typing import List, Union, Any
+from typing import List, Any
 from datetime import timedelta
 import discord
 

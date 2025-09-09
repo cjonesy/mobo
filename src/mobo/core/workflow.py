@@ -19,7 +19,6 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_core.runnables import RunnableConfig
 
 from .state import (
     BotState,

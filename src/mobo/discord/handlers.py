@@ -8,7 +8,7 @@ and error scenarios, keeping the main client clean and focused.
 import logging
 import tempfile
 from enum import Enum
-from typing import Any, Dict, Optional, Callable, IO
+from typing import Any, Dict, Optional, Callable
 from dataclasses import dataclass
 
 import discord
