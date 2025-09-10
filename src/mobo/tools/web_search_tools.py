@@ -21,23 +21,20 @@ def get_google_custom_search_api_key() -> str:
     """Get Google Custom Search API key."""
     settings = get_settings()
 
-    if (
-        not hasattr(settings, "google_custom_search_api_key")
-        or not settings.google_custom_search_api_key
-    ):
+    if not settings.google_search.api_key:
         raise ValueError("Google Custom Search API key not configured")
 
-    return settings.google_custom_search_api_key.get_secret_value()
+    return settings.google_search.api_key.get_secret_value()
 
 
 def get_google_cse_id() -> str:
     """Get Google Custom Search Engine ID."""
     settings = get_settings()
 
-    if not hasattr(settings, "google_cse_id") or not settings.google_cse_id:
+    if not settings.google_search.cse_id:
         raise ValueError("Google Custom Search Engine ID not configured")
 
-    return settings.google_cse_id
+    return settings.google_search.cse_id
 
 
 async def _search_web_impl(

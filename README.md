@@ -100,33 +100,42 @@ cp .env.example .env
 
 Create a `.env` file with the following:
 
+**Note**: All environment variables now use the `MOBO_` prefix. Nested settings (Discord, OpenRouter) use double underscores (`__`).
+
 ```env
-# Required
-DISCORD_TOKEN=your_discord_bot_token
-OPENAI_API_KEY=your_openai_api_key
+# Required (all variables use MOBO_ prefix)
+MOBO_DISCORD__TOKEN=your_discord_bot_token
+MOBO_OPENROUTER__API_KEY=your_openrouter_api_key
+MOBO_OPENAI_API_KEY=your_openai_api_key
 
 # Database
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/mobo
+MOBO_DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/mobo
+
+# OpenRouter Configuration
+MOBO_OPENROUTER__BASE_URL=https://openrouter.ai/api/v1
 
 # Bot Configuration
-MAX_BOT_RESPONSES=3
-CHATBOT_MODEL=openai/gpt-4o
-CHATBOT_TEMPERATURE=0.7
+MOBO_MAX_BOT_RESPONSES=3
+MOBO_SUPERVISOR_LLM__MODEL=openai/gpt-4o
+MOBO_SUPERVISOR_LLM__TEMPERATURE=0.7
 
+# Response LLM Configuration
+MOBO_RESPONSE_LLM__MODEL=openai/gpt-4.1
+MOBO_RESPONSE_LLM__TEMPERATURE=0.8
 # Memory and RAG Configuration
-SIMILARITY_THRESHOLD=0.7          # Minimum similarity for relevant conversations (0.0-1.0)
-RECENT_MESSAGES_LIMIT=5           # Number of recent messages in context (1-20)
-RELEVANT_MESSAGES_LIMIT=3         # Number of relevant messages in context (0-10)
+MOBO_SIMILARITY_THRESHOLD=0.7          # Minimum similarity for relevant conversations (0.0-1.0)
+MOBO_RECENT_MESSAGES_LIMIT=5           # Number of recent messages in context (1-20)
+MOBO_RELEVANT_MESSAGES_LIMIT=3         # Number of relevant messages in context (0-10)
 
 # Image Generation
-IMAGE_MODEL=dall-e-3
-IMAGE_SIZE=1024x1024
-IMAGE_QUALITY=standard
-IMAGE_DAILY_LIMIT=20
-IMAGE_HOURLY_LIMIT=2
+MOBO_IMAGE_MODEL=dall-e-3
+MOBO_IMAGE_SIZE=1024x1024
+MOBO_IMAGE_QUALITY=standard
+MOBO_IMAGE_DAILY_LIMIT=20
+MOBO_IMAGE_HOURLY_LIMIT=2
 
 # Logging
-LOG_LEVEL=INFO
+MOBO_LOG_LEVEL=INFO
 ```
 
 ## 🚀 Usage
@@ -268,21 +277,21 @@ tune these settings:
 ```env
 # How similar past conversations need to be to include in context (0.0-1.0)
 # Lower values = more conversations included, higher values = only very similar ones
-SIMILARITY_THRESHOLD=0.7
+MOBO_SIMILARITY_THRESHOLD=0.7
 
 # Number of recent messages to always include (1-20)
-RECENT_MESSAGES_LIMIT=5
+MOBO_RECENT_MESSAGES_LIMIT=5
 
 # Number of semantically relevant messages to include (0-10)
-RELEVANT_MESSAGES_LIMIT=3
+MOBO_RELEVANT_MESSAGES_LIMIT=3
 ```
 
 **Examples:**
 
-- `SIMILARITY_THRESHOLD=0.9` - Only include very similar conversations
-- `SIMILARITY_THRESHOLD=0.5` - Include more loosely related conversations
-- `RECENT_MESSAGES_LIMIT=10` - Include more recent context
-- `RELEVANT_MESSAGES_LIMIT=0` - Disable semantic search, only use recent
+- `MOBO_SIMILARITY_THRESHOLD=0.9` - Only include very similar conversations
+- `MOBO_SIMILARITY_THRESHOLD=0.5` - Include more loosely related conversations
+- `MOBO_RECENT_MESSAGES_LIMIT=10` - Include more recent context
+- `MOBO_RELEVANT_MESSAGES_LIMIT=0` - Disable semantic search, only use recent
   messages
 
 ### Database Configuration
@@ -291,7 +300,7 @@ The bot automatically creates the required database schema. For custom setups:
 
 ```python
 # Custom database configuration
-DATABASE_URL=postgresql+asyncpg://user:pass@host:port/db
+MOBO_DATABASE_URL=postgresql+asyncpg://user:pass@host:port/db
 DATABASE_ECHO=true  # Enable SQL logging
 DATABASE_POOL_SIZE=20
 DATABASE_MAX_OVERFLOW=30

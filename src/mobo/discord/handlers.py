@@ -16,7 +16,7 @@ import httpx
 
 from ..core.workflow import execute_workflow, format_workflow_summary
 from ..tools.discord_context import set_discord_context, clear_discord_context
-from ..config import get_settings
+from ..config import get_settings, Settings
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +164,7 @@ class MessageProcessor:
             return False, basic_reason
 
         # If max_bot_responses is 0, unlimited responses are allowed
-        if settings.max_bot_responses == 0:
+        if settings.bot_interaction.max_bot_responses == 0:
             return True, basic_reason
 
         # Check interaction limits and cooldown
@@ -177,13 +177,16 @@ class MessageProcessor:
                 ) = await self.context.memory_system.should_respond_to_bot(
                     str(message.author.id),
                     str(message.channel.id),
-                    settings.bot_response_cooldown_seconds,
+                    settings.bot_interaction.bot_response_cooldown_seconds,
                 )
 
-                if not can_respond or current_count >= settings.max_bot_responses:
+                if (
+                    not can_respond
+                    or current_count >= settings.bot_interaction.max_bot_responses
+                ):
                     return (
                         False,
-                        f"Bot interaction limit reached ({current_count}/{settings.max_bot_responses}) - {status_reason}",
+                        f"Bot interaction limit reached ({current_count}/{settings.bot_interaction.max_bot_responses}) - {status_reason}",
                     )
 
                 # Track this interaction
@@ -193,12 +196,12 @@ class MessageProcessor:
                     str(message.guild.id) if message.guild else None,
                 )
                 logger.info(
-                    f"🤖 Responding to bot {message.author.name} ({new_count}/{settings.max_bot_responses})"
+                    f"🤖 Responding to bot {message.author.name} ({new_count}/{settings.bot_interaction.max_bot_responses})"
                 )
 
                 return (
                     True,
-                    f"{basic_reason} - interaction {new_count}/{settings.max_bot_responses}",
+                    f"{basic_reason} - interaction {new_count}/{settings.bot_interaction.max_bot_responses}",
                 )
 
             except Exception as e:
@@ -506,7 +509,9 @@ class AdminHandler:
     such as bot management, debugging, and configuration changes.
     """
 
-    def __init__(self, settings, error_handler: Optional[ErrorHandler] = None):
+    def __init__(
+        self, settings: Settings, error_handler: Optional[ErrorHandler] = None
+    ):
         self.settings = settings
         self.error_handler = error_handler
 
@@ -523,7 +528,7 @@ class AdminHandler:
         user_id = str(message.author.id)
 
         # Check if user is admin
-        if not self.settings.is_admin(user_id):
+        if str(user_id) not in self.settings.admin.user_ids:
             return None
 
         content = message.content.strip().lower()
@@ -562,7 +567,7 @@ class AdminHandler:
         """Handle !model admin command."""
         parts = content.split(maxsplit=1)
         if len(parts) < 2:
-            return f"Current model:\n• Chatbot: {self.settings.chatbot_model}\n• Image: {self.settings.image_model}"
+            return f"Current model:\n• Supervisor: {self.settings.supervisor_llm.model}\n• Response: {self.settings.response_llm.model}\n• Image: {self.settings.image_generation.model}"
 
         new_model = parts[1].strip()
 

@@ -522,7 +522,9 @@ class LangGraphMemory:
 
                 if interaction:
                     # Increment existing interaction
-                    interaction.interaction_count = int(interaction.interaction_count) + 1  # type: ignore[assignment]
+                    interaction.interaction_count = (
+                        int(interaction.interaction_count) + 1
+                    )  # type: ignore[assignment]
                     interaction.last_interaction = datetime.now(UTC)  # type: ignore[assignment]
                 else:
                     # Create new interaction record

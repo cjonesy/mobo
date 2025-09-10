@@ -10,70 +10,119 @@ from pydantic import SecretStr, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class Settings(BaseSettings):
-    """Main configuration class for the Discord bot."""
+class DiscordSettings(BaseSettings):
+    """Discord-specific configuration settings."""
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore",
+    token: SecretStr = Field(
+        default=SecretStr(""),
+        description="Discord bot token from Discord Developer Portal",
     )
 
-    def __init__(self, **kwargs: Any) -> None:
-        """Initialize settings, allowing environment variables to provide required fields."""
-        super().__init__(**kwargs)
 
-    # =============================================================================
-    # DISCORD CONFIGURATION
-    # =============================================================================
-    discord_token: SecretStr = Field(
-        description="Discord bot token from Discord Developer Portal"
-    )
+class OpenRouterSettings(BaseSettings):
+    """OpenRouter LLM service configuration settings."""
 
-    # =============================================================================
-    # OPENROUTER / LLM CONFIGURATION
-    # =============================================================================
-    openrouter_api_key: SecretStr = Field(
-        description="OpenRouter API key for LLM access"
+    api_key: SecretStr = Field(
+        default=SecretStr(""), description="OpenRouter API key for LLM access"
     )
-    openrouter_base_url: str = Field(
+    base_url: str = Field(
         default="https://openrouter.ai/api/v1",
         description="Base URL for OpenRouter API requests",
     )
 
-    # Supervisor LLM (needs tool calling capabilities - can be smaller/cheaper)
-    chatbot_model: str = Field(
+
+class SupervisorLLMSettings(BaseSettings):
+    """Supervisor LLM configuration for tool planning and orchestration."""
+
+    model: str = Field(
         default="openai/gpt-5-mini",
         description="Model for supervisor (tool planning) - needs tool calling",
     )
-    chatbot_temperature: float = Field(
+    temperature: float = Field(
         default=0.3,
         ge=0.0,
         le=2.0,
         description="Temperature for supervisor decisions",
     )
 
-    # Response generation LLM (for personality and creativity)
-    response_model: str = Field(
+
+class ResponseLLMSettings(BaseSettings):
+    """Response generation LLM configuration for personality and creativity."""
+
+    model: str = Field(
         default="openai/gpt-4.1",
         description="Model for creative response generation with personality",
     )
-    response_temperature: float = Field(
+    temperature: float = Field(
         default=0.8,
         ge=0.0,
         le=2.0,
         description="Temperature for creative response generation",
     )
 
-    # =============================================================================
-    # PERSONALITY CONFIGURATION
-    # =============================================================================
-    personality_prompt: str = Field(
-        description="LLM personality prompt - supports multiline text or base64 encoded"
+
+class DatabaseSettings(BaseSettings):
+    """Database configuration settings."""
+
+    url: str = Field(
+        default="postgresql+asyncpg://mobo:mobo@localhost:5432/mobo",
+        description="PostgreSQL database connection URL (used by LangGraph PostgresSaver and PostgresStore)",
+    )
+    echo: bool = Field(
+        default=False, description="Enable SQL query logging (useful for debugging)"
+    )
+    pool_size: int = Field(
+        default=10, ge=1, le=50, description="Database connection pool size"
+    )
+    max_overflow: int = Field(
+        default=20,
+        ge=0,
+        le=100,
+        description="Maximum database connection pool overflow",
     )
 
-    @field_validator("personality_prompt")
+    @field_validator("url")
+    def validate_database_url(cls, v):
+        """Ensure database URL is PostgreSQL."""
+        if not v.startswith("postgresql"):
+            raise ValueError("Database URL must be PostgreSQL")
+        return v
+
+    @property
+    def url_for_langgraph(self) -> str:
+        """Get database URL in format expected by LangGraph (psycopg format)."""
+        # LangGraph PostgreSQL connectors use psycopg, not SQLAlchemy
+        if self.url.startswith("postgresql+asyncpg://"):
+            return self.url.replace("postgresql+asyncpg://", "postgresql://")
+        return self.url
+
+    @property
+    def url_for_sqlalchemy(self) -> str:
+        """Get database URL in format expected by SQLAlchemy (with async driver)."""
+        # Ensure we have the async driver for SQLAlchemy
+        if self.url.startswith("postgresql://"):
+            return self.url.replace("postgresql://", "postgresql+asyncpg://")
+        return self.url
+
+
+class OpenAISettings(BaseSettings):
+    """OpenAI API configuration for embeddings and image generation."""
+
+    api_key: SecretStr = Field(
+        default=SecretStr(""),
+        description="OpenAI API key for DALL-E image generation and embeddings",
+    )
+
+
+class PersonalitySettings(BaseSettings):
+    """Bot personality and behavior configuration."""
+
+    prompt: str = Field(
+        default="",
+        description="LLM personality prompt - supports multiline text or base64 encoded",
+    )
+
+    @field_validator("prompt")
     def decode_personality_prompt(cls, v):
         """Auto-decode base64 if the prompt appears to be encoded."""
         if not v:
@@ -91,61 +140,14 @@ class Settings(BaseSettings):
 
         return v
 
-    # =============================================================================
-    # DATABASE CONFIGURATION
-    # =============================================================================
-    database_url: str = Field(
-        default="postgresql+asyncpg://mobo:mobo@localhost:5432/mobo",
-        description="PostgreSQL database connection URL (used by LangGraph PostgresSaver and PostgresStore)",
-    )
-    database_echo: bool = Field(
-        default=False, description="Enable SQL query logging (useful for debugging)"
-    )
-    database_pool_size: int = Field(
-        default=10, ge=1, le=50, description="Database connection pool size"
-    )
-    database_max_overflow: int = Field(
-        default=20,
-        ge=0,
-        le=100,
-        description="Maximum database connection pool overflow",
-    )
 
-    @field_validator("database_url")
-    def validate_database_url(cls, v):
-        """Ensure database URL is PostgreSQL."""
-        if not v.startswith("postgresql"):
-            raise ValueError("Database URL must be PostgreSQL")
-        return v
+class ImageGenerationSettings(BaseSettings):
+    """Image generation configuration for DALL-E."""
 
-    @property
-    def database_url_for_langgraph(self) -> str:
-        """Get database URL in format expected by LangGraph (psycopg format)."""
-        # LangGraph PostgreSQL connectors use psycopg, not SQLAlchemy
-        if self.database_url.startswith("postgresql+asyncpg://"):
-            return self.database_url.replace("postgresql+asyncpg://", "postgresql://")
-        return self.database_url
-
-    @property
-    def database_url_for_sqlalchemy(self) -> str:
-        """Get database URL in format expected by SQLAlchemy (with async driver)."""
-        # Ensure we have the async driver for SQLAlchemy
-        if self.database_url.startswith("postgresql://"):
-            return self.database_url.replace("postgresql://", "postgresql+asyncpg://")
-        return self.database_url
-
-    # =============================================================================
-    # EXTERNAL API CONFIGURATION
-    # =============================================================================
-
-    # OpenAI (for image generation)
-    openai_api_key: SecretStr = Field(
-        default=SecretStr(""), description="OpenAI API key for DALL-E image generation"
-    )
-    image_model: Literal["dall-e-2", "dall-e-3"] = Field(
+    model: Literal["dall-e-2", "dall-e-3"] = Field(
         default="dall-e-3", description="DALL-E model for image generation"
     )
-    image_size: Literal[
+    size: Literal[
         "256x256",
         "512x512",
         "1024x1024",  # dall-e-2
@@ -154,24 +156,31 @@ class Settings(BaseSettings):
         "1792x1024",
         "1024x1792",  # dall-e-3
     ] = Field(default="1024x1024", description="Generated image dimensions")
-    image_quality: Literal["standard", "hd"] = Field(
+    quality: Literal["standard", "hd"] = Field(
         default="standard", description="Image quality (dall-e-3 only)"
     )
 
-    # Giphy
-    giphy_api_key: SecretStr = Field(
+
+class GiphySettings(BaseSettings):
+    """Giphy API configuration for GIF search."""
+
+    api_key: SecretStr = Field(
         default=SecretStr(""), description="Giphy API key for GIF search"
     )
 
-    # Google Custom Search
-    google_custom_search_api_key: SecretStr = Field(
+
+class GoogleSearchSettings(BaseSettings):
+    """Google Custom Search API configuration for web search."""
+
+    api_key: SecretStr = Field(
         default=SecretStr(""), description="Google Custom Search API key"
     )
-    google_cse_id: str = Field(default="", description="Google Custom Search Engine ID")
+    cse_id: str = Field(default="", description="Google Custom Search Engine ID")
 
-    # =============================================================================
-    # MEMORY AND RAG CONFIGURATION
-    # =============================================================================
+
+class MemorySettings(BaseSettings):
+    """Memory and RAG (Retrieval-Augmented Generation) configuration."""
+
     similarity_threshold: float = Field(
         default=0.7,
         ge=0.0,
@@ -191,9 +200,10 @@ class Settings(BaseSettings):
         description="Number of semantically relevant messages to include in context",
     )
 
-    # =============================================================================
-    # BOT INTERACTION LIMITS
-    # =============================================================================
+
+class BotInteractionSettings(BaseSettings):
+    """Bot interaction limits and anti-loop protection configuration."""
+
     max_bot_responses: int = Field(
         default=5,
         ge=0,
@@ -207,22 +217,15 @@ class Settings(BaseSettings):
         description="Seconds to wait after hitting bot response limit before responding again (0 = no cooldown)",
     )
 
-    # =============================================================================
-    # ADMIN AND DEVELOPMENT
-    # =============================================================================
-    admin_user_ids: List[str] = Field(
+
+class AdminSettings(BaseSettings):
+    """Admin user configuration."""
+
+    user_ids: List[str] = Field(
         default_factory=list, description="Discord user IDs with admin privileges"
     )
 
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
-        default="INFO", description="Logging level"
-    )
-
-    debug_mode: bool = Field(
-        default=False, description="Enable debug features and verbose logging"
-    )
-
-    @field_validator("admin_user_ids", mode="before")
+    @field_validator("user_ids", mode="before")
     def parse_admin_user_ids(cls, v):
         """Parse admin user IDs from comma-separated string or list."""
         if isinstance(v, str):
@@ -233,109 +236,50 @@ class Settings(BaseSettings):
             return [str(id) for id in v]
         return v
 
-    # =============================================================================
-    # VALIDATION AND UTILITY METHODS
-    # =============================================================================
 
-    def is_admin(self, user_id: str) -> bool:
-        """Check if a user ID has admin privileges."""
-        return str(user_id) in self.admin_user_ids
+class Settings(BaseSettings):
+    """Main configuration class for the Discord bot."""
 
-    def is_postgresql(self) -> bool:
-        """Check if using PostgreSQL database."""
-        return "postgresql" in self.database_url.lower()
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+        env_nested_delimiter="__",
+        env_prefix="MOBO_",
+    )
 
-    def get_personality_prompt_sync(self) -> str:
-        """Get the personality prompt synchronously for validation."""
-        return self.personality_prompt
+    def __init__(self, **kwargs: Any) -> None:
+        """Initialize settings, allowing environment variables to provide required fields."""
+        super().__init__(**kwargs)
 
-    async def get_personality_prompt(self) -> str:
-        """Get the personality prompt asynchronously."""
-        return self.personality_prompt
+    discord: DiscordSettings = Field(default_factory=DiscordSettings)
+    openrouter: OpenRouterSettings = Field(default_factory=OpenRouterSettings)
+    supervisor_llm: SupervisorLLMSettings = Field(default_factory=SupervisorLLMSettings)
+    response_llm: ResponseLLMSettings = Field(default_factory=ResponseLLMSettings)
+    database: DatabaseSettings = Field(default_factory=DatabaseSettings)
+    openai: OpenAISettings = Field(default_factory=OpenAISettings)
+    personality: PersonalitySettings = Field(default_factory=PersonalitySettings)
+    memory: MemorySettings = Field(default_factory=MemorySettings)
+    bot_interaction: BotInteractionSettings = Field(
+        default_factory=BotInteractionSettings
+    )
+    admin: AdminSettings = Field(default_factory=AdminSettings)
 
-    def get_openai_config(self) -> dict:
-        """Get OpenAI configuration for image generation."""
-        return {
-            "api_key": self.openai_api_key.get_secret_value(),
-            "model": self.image_model,
-            "size": self.image_size,
-            "quality": self.image_quality,
-        }
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
+        default="INFO", description="Logging level"
+    )
+    debug_mode: bool = Field(
+        default=False, description="Enable debug features and verbose logging"
+    )
 
-    def get_chatbot_config(self) -> dict:
-        """Get main chatbot LLM configuration."""
-        return {
-            "model": self.chatbot_model,
-            "temperature": self.chatbot_temperature,
-            "api_key": self.openrouter_api_key.get_secret_value(),
-            "base_url": self.openrouter_base_url,
-        }
+    # Tools
+    image_generation: ImageGenerationSettings = Field(
+        default_factory=ImageGenerationSettings
+    )
+    giphy: GiphySettings = Field(default_factory=GiphySettings)
+    google_search: GoogleSearchSettings = Field(default_factory=GoogleSearchSettings)
 
 
 @lru_cache()
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()
-
-
-# =============================================================================
-# CONFIGURATION VALIDATION HELPERS
-# =============================================================================
-
-
-def validate_required_settings() -> None:
-    """Validate that all required settings are configured."""
-    settings = get_settings()
-    errors = []
-
-    # Check required tokens
-    if not settings.discord_token.get_secret_value():
-        errors.append("DISCORD_TOKEN is required")
-
-    if not settings.openrouter_api_key.get_secret_value():
-        errors.append("OPENROUTER_API_KEY is required")
-
-    if not settings.openai_api_key.get_secret_value():
-        errors.append("OPENAI_API_KEY is required for embeddings and image generation")
-
-    # Check personality configuration
-    try:
-        settings.get_personality_prompt_sync()
-    except ValueError as e:
-        errors.append(f"Personality configuration error: {e}")
-
-    if errors:
-        raise ValueError(
-            "Configuration errors:\n" + "\n".join(f"- {error}" for error in errors)
-        )
-
-
-def print_config_summary() -> None:
-    """Print a summary of current configuration (for debugging)."""
-    settings = get_settings()
-
-    print("🔧 Configuration Summary:")
-    print(
-        f"  Discord: {'✅ Configured' if settings.discord_token.get_secret_value() else '❌ Missing token'}"
-    )
-    print(
-        f"  OpenRouter: {'✅ Configured' if settings.openrouter_api_key.get_secret_value() else '❌ Missing key'}"
-    )
-    print(f"  Database: {settings.database_url}")
-    print(f"  Chatbot Model: {settings.chatbot_model}")
-    print(f"  Image Model: {settings.image_model}")
-    print(f"  Log Level: {settings.log_level}")
-    print(f"  Debug Mode: {settings.debug_mode}")
-    print(f"  Admin Users: {len(settings.admin_user_ids)} configured")
-
-    # Check optional APIs
-    optional_apis = []
-    if settings.openai_api_key.get_secret_value():
-        optional_apis.append("OpenAI (images)")
-    if settings.giphy_api_key.get_secret_value():
-        optional_apis.append("Giphy")
-    if settings.google_custom_search_api_key.get_secret_value():
-        optional_apis.append("Google Custom Search")
-
-    if optional_apis:
-        print(f"  Optional APIs: {', '.join(optional_apis)}")

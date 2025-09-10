@@ -9,7 +9,7 @@ import signal
 import sys
 from typing import Optional
 
-from mobo.config import get_settings, validate_required_settings
+from mobo.config import get_settings
 from mobo.discord.client import BotClient
 from mobo.utils.logging import setup_logging
 
@@ -88,13 +88,12 @@ async def main():
 
     try:
         try:
-            validate_required_settings()
+            app = BotApplication()
             logger.info("✅ Configuration validated")
-        except ValueError as e:
-            logger.error(f"❌ {e}")
+        except Exception as e:
+            logger.error(f"❌ Configuration error: {e}")
             sys.exit(1)
 
-        app = BotApplication()
         setup_signal_handlers(app)
 
         await app.run()
@@ -148,8 +147,8 @@ def init_db():
 
             # Initialize LangGraph memory system (handles both checkpointing and user profiles)
             memory_system = LangGraphMemory(
-                database_url=settings.database_url_for_langgraph,
-                openai_api_key=settings.openai_api_key.get_secret_value(),
+                database_url=settings.database.url_for_langgraph,
+                openai_api_key=settings.openai.api_key.get_secret_value(),
             )
             await memory_system.initialize()
 

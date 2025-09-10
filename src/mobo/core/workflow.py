@@ -60,7 +60,7 @@ async def load_context_node(
 
         # Load bot personality
         settings = get_settings()
-        personality = await settings.get_personality_prompt()
+        personality = settings.personality.prompt
         state["personality"] = personality
 
         # Load user profile (bot-specific preferences only)
@@ -71,9 +71,9 @@ async def load_context_node(
         context_data = await memory_system.get_hybrid_conversation_context(
             current_message=state["user_message"],
             channel_id=state["channel_id"],
-            recent_limit=settings.recent_messages_limit,
-            relevant_limit=settings.relevant_messages_limit,
-            similarity_threshold=settings.similarity_threshold,
+            recent_limit=settings.memory.recent_messages_limit,
+            relevant_limit=settings.memory.relevant_messages_limit,
+            similarity_threshold=settings.memory.similarity_threshold,
         )
 
         state["conversation_history"] = context_data["recent_messages"]
@@ -166,10 +166,10 @@ async def chatbot_node(
         ).strip()
 
         llm = ChatOpenAI(
-            model=settings.chatbot_model,
-            temperature=settings.chatbot_temperature,
-            api_key=settings.openrouter_api_key,
-            base_url=settings.openrouter_base_url,
+            model=settings.supervisor_llm.model,
+            temperature=settings.supervisor_llm.temperature,
+            api_key=settings.openrouter.api_key,
+            base_url=settings.openrouter.base_url,
         )
 
         tools = get_all_tools()

@@ -19,10 +19,10 @@ def get_giphy_api_key() -> str:
     """Get Giphy API key."""
     settings = get_settings()
 
-    if not settings.giphy_api_key:
+    if not settings.giphy.api_key:
         raise ValueError("Giphy API key not configured")
 
-    return settings.giphy_api_key.get_secret_value()
+    return settings.giphy.api_key.get_secret_value()
 
 
 @registered_tool(response_format="content_and_artifact")

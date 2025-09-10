@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 async def message_generator_node(
     state: BotState,
-    memory_system,  # LangGraph memory system
+    memory_system,
 ) -> BotState:
     """
     Generate final response using tool results and personality.
@@ -87,17 +87,11 @@ async def message_generator_node(
         ).strip()
 
         # Use a larger model for creative response generation
-        # Default to same model, but can be overridden with a separate setting
-        response_model = getattr(settings, "response_model", settings.chatbot_model)
-        response_temp = getattr(
-            settings, "response_temperature", settings.chatbot_temperature
-        )
-
         llm = ChatOpenAI(
-            model=response_model,
-            temperature=response_temp,
-            api_key=settings.openrouter_api_key,
-            base_url=settings.openrouter_base_url,
+            model=settings.response_llm.model,
+            temperature=settings.response_llm.temperature,
+            api_key=settings.openrouter.api_key,
+            base_url=settings.openrouter.base_url,
         )
 
         # Build conversation with original message and tool results

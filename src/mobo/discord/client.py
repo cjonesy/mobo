@@ -56,12 +56,12 @@ class BotClient(discord.Client):
 
         try:
             logger.info("🔑 Logging in to Discord...")
-            await self.login(self.settings.discord_token.get_secret_value())
+            await self.login(self.settings.discord.token.get_secret_value())
 
             logger.info("🚀 Initializing modern LangGraph memory system...")
             self.memory_system = LangGraphMemory(
-                database_url=self.settings.database_url_for_langgraph,
-                openai_api_key=self.settings.openai_api_key.get_secret_value(),
+                database_url=self.settings.database.url_for_langgraph,
+                openai_api_key=self.settings.openai.api_key.get_secret_value(),
             )
             await self.memory_system.initialize()
 

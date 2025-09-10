@@ -41,7 +41,7 @@ def test_settings():
     with patch.dict(
         os.environ,
         {
-            "DISCORD_TOKEN": "test_token",
+            "DISCORD__TOKEN": "test_token",
             "OPENAI_API_KEY": "test_openai_key",
             "POSTGRES_URL": "sqlite:///:memory:",
             "POSTGRES_ASYNC_URL": "sqlite+aiosqlite:///:memory:",

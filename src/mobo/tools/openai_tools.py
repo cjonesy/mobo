@@ -18,11 +18,11 @@ def get_openai_client() -> AsyncOpenAI:
     """Get configured OpenAI client."""
     settings = get_settings()
 
-    if not settings.openai_api_key:
+    if not settings.openai.api_key:
         raise ValueError("OpenAI API key not configured")
 
     return AsyncOpenAI(
-        api_key=settings.openai_api_key.get_secret_value(),
+        api_key=settings.openai.api_key.get_secret_value(),
         base_url="https://api.openai.com/v1",
     )
 
@@ -40,10 +40,17 @@ async def generate_image(prompt: str) -> Tuple[str, Dict]:
     """
     try:
         client = get_openai_client()
+        settings = get_settings()
 
         logger.info(f"🎨 Generating image with prompt: {prompt[:50]}...")
 
-        response = await client.images.generate(prompt=prompt, n=1, size="1024x1024")
+        response = await client.images.generate(
+            prompt=prompt,
+            n=1,
+            model=settings.image_generation.model,
+            size=settings.image_generation.size,
+            quality=settings.image_generation.quality,
+        )
 
         if not response.data:
             return ("Sorry, I couldn't generate an image. Please try again.", {})

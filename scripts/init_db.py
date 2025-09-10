@@ -16,7 +16,7 @@ project_root = Path(__file__).parent.parent
 src_path = project_root / "src"
 sys.path.insert(0, str(src_path))
 
-from mobo.config import get_settings, validate_required_settings
+from mobo.config import get_settings, Settings
 from mobo.memory.langgraph_memory import LangGraphMemory
 from mobo.memory.models import create_tables_async, Base
 from mobo.utils.logging import setup_logging
@@ -29,7 +29,7 @@ class DatabaseInitializer:
     """Handles database initialization and setup using modern LangGraph patterns."""
 
     def __init__(self):
-        self.settings = get_settings()
+        self.settings: Settings = get_settings()
         self.memory_system = None
 
     async def initialize_all(self):
@@ -39,7 +39,7 @@ class DatabaseInitializer:
         try:
             # Create all application tables using the proper function from models
             logger.info("🏗️ Creating application tables...")
-            engine = create_async_engine(self.settings.database_url_for_sqlalchemy)
+            engine = create_async_engine(self.settings.database.url_for_sqlalchemy)
 
             try:
                 await create_tables_async(engine)
@@ -50,8 +50,8 @@ class DatabaseInitializer:
             # Initialize LangGraph memory system (handles both checkpointing and user profiles)
             logger.info("🚀 Initializing LangGraph memory system...")
             self.memory_system = LangGraphMemory(
-                database_url=self.settings.database_url_for_langgraph,
-                openai_api_key=self.settings.openai_api_key.get_secret_value(),
+                database_url=self.settings.database.url_for_langgraph,
+                openai_api_key=self.settings.openai.api_key.get_secret_value(),
             )
             await self.memory_system.initialize()
             logger.info("✅ LangGraph memory system initialized")
@@ -76,8 +76,8 @@ class DatabaseInitializer:
         try:
             # Test LangGraph memory system
             self.memory_system = LangGraphMemory(
-                database_url=self.settings.database_url_for_langgraph,
-                openai_api_key=self.settings.openai_api_key.get_secret_value(),
+                database_url=self.settings.database.url_for_langgraph,
+                openai_api_key=self.settings.openai.api_key.get_secret_value(),
             )
             await self.memory_system.initialize()
 
@@ -106,13 +106,13 @@ class DatabaseInitializer:
     def print_database_info(self):
         """Print information about the database configuration."""
         print("\n📊 Database Configuration:")
-        print(f"  URL: {self.settings.database_url}")
+        print(f"  URL: {self.settings.database.url}")
         print(f"  Type: PostgreSQL")
-        print(f"  Echo: {self.settings.database_echo}")
+        print(f"  Echo: {self.settings.database.echo}")
 
-        if self.settings.is_postgresql():
-            print(f"  Pool Size: {self.settings.database_pool_size}")
-            print(f"  Max Overflow: {self.settings.database_max_overflow}")
+        if "postgresql" in self.settings.database.url.lower():
+            print(f"  Pool Size: {self.settings.database.pool_size}")
+            print(f"  Max Overflow: {self.settings.database.max_overflow}")
 
         print()
 
@@ -124,10 +124,6 @@ async def main():
     logger.info("🚀 Database initialization script started")
 
     try:
-        # Validate configuration
-        validate_required_settings()
-        logger.info("✅ Configuration validated")
-
         # Create initializer
         initializer = DatabaseInitializer()
         initializer.print_database_info()
@@ -166,7 +162,7 @@ def reset_database():
 
         logger.info("🗑️ Resetting database...")
 
-        engine = create_async_engine(settings.database_url_for_sqlalchemy)
+        engine = create_async_engine(settings.database.url_for_sqlalchemy)
 
         try:
             async with engine.begin() as conn:
