@@ -21,16 +21,9 @@ from sqlalchemy import (
     Index,
 )
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import relationship
 from pgvector.sqlalchemy import Vector  # type: ignore[import-untyped]
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    # For type checking, define Base as a proper base class
-    from sqlalchemy.orm import DeclarativeBase as Base
-else:
-    # At runtime, use the actual declarative_base
-    Base = declarative_base()
+from mobo.db import Base
 
 
 class TimestampMixin:

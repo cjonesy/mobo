@@ -12,51 +12,20 @@ from typing import Optional, Callable, Any, Dict, TypeVar, cast
 from contextlib import asynccontextmanager
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
-from ..config import get_settings
-from ..memory.models import RateLimit
+from mobo.memory.models import RateLimit
+from mobo.db import get_session_maker
 
 logger = logging.getLogger(__name__)
 
 F = TypeVar("F", bound=Callable[..., Any])
 
-# Global async engine for rate limiting
-_async_engine = None
-_async_session_maker = None
-
-
-def get_async_engine():
-    """Get or create the async database engine for rate limiting."""
-    global _async_engine, _async_session_maker
-
-    if _async_engine is None:
-        settings = get_settings()
-        database_url = settings.database_url
-
-        # Convert to async URL if needed
-        if database_url.startswith("postgresql://"):
-            database_url = database_url.replace(
-                "postgresql://", "postgresql+asyncpg://"
-            )
-
-        _async_engine = create_async_engine(
-            database_url, pool_size=5, max_overflow=10, echo=False
-        )
-        _async_session_maker = async_sessionmaker(_async_engine, expire_on_commit=False)
-
-        logger.debug("Created async engine for rate limiting")
-
-    return _async_engine
-
 
 @asynccontextmanager
 async def get_rate_limit_session():
     """Get an async database session for rate limiting operations."""
-    if _async_session_maker is None:
-        raise RuntimeError("Async session maker not initialized")
-
-    session = _async_session_maker()
+    session_maker = get_session_maker()
+    session = session_maker()
     try:
         yield session
         await session.commit()

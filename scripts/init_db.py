@@ -18,9 +18,9 @@ sys.path.insert(0, str(src_path))
 
 from mobo.config import get_settings, Settings
 from mobo.memory.langgraph_memory import LangGraphMemory
-from mobo.memory.models import create_tables_async, Base
+from mobo.memory.models import create_tables_async
 from mobo.utils.logging import setup_logging
-from sqlalchemy.ext.asyncio import create_async_engine
+from mobo.db import get_engine, Base
 
 logger = logging.getLogger(__name__)
 
@@ -39,12 +39,7 @@ class DatabaseInitializer:
         try:
             # Create all application tables using the proper function from models
             logger.info("🏗️ Creating application tables...")
-            engine = create_async_engine(self.settings.database.url_for_sqlalchemy)
-
-            try:
-                await create_tables_async(engine)
-            finally:
-                await engine.dispose()
+            await create_tables_async(get_engine())
             logger.info("✅ Application tables created")
 
             # Initialize LangGraph memory system (handles both checkpointing and user profiles)
@@ -162,22 +157,16 @@ def reset_database():
 
         logger.info("🗑️ Resetting database...")
 
-        engine = create_async_engine(settings.database.url_for_sqlalchemy)
+        async with get_engine().begin() as conn:
+            # Drop all tables
+            await conn.run_sync(Base.metadata.drop_all)
+            logger.info("🗑️ All tables dropped")
 
-        try:
-            async with engine.begin() as conn:
-                # Drop all tables
-                await conn.run_sync(Base.metadata.drop_all)
-                logger.info("🗑️ All tables dropped")
+            # Recreate all tables
+            await conn.run_sync(Base.metadata.create_all)
+            logger.info("🏗️ All tables recreated")
 
-                # Recreate all tables
-                await conn.run_sync(Base.metadata.create_all)
-                logger.info("🏗️ All tables recreated")
-
-            logger.info("✅ Database reset completed")
-
-        finally:
-            await engine.dispose()
+        logger.info("✅ Database reset completed")
 
     asyncio.run(_reset())
 
