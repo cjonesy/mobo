@@ -17,10 +17,10 @@ src_path = project_root / "src"
 sys.path.insert(0, str(src_path))
 
 from mobo.config import get_settings, Settings
-from mobo.memory.langgraph_memory import LangGraphMemory
-from mobo.memory.models import create_tables_async
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.store.postgres import PostgresStore
 from mobo.utils.logging import setup_logging
-from mobo.db import get_engine, Base
+from mobo.db import get_engine, Base, get_session_maker
 
 logger = logging.getLogger(__name__)
 
@@ -30,73 +30,38 @@ class DatabaseInitializer:
 
     def __init__(self):
         self.settings: Settings = get_settings()
-        self.memory_system = None
+        self.session_maker = get_session_maker()
 
     async def initialize_all(self):
         """Initialize database schema and LangGraph memory system."""
         logger.info("🗄️ Starting database initialization...")
 
         try:
-            # Create all application tables using the proper function from models
+            # Create all application tables
             logger.info("🏗️ Creating application tables...")
-            await create_tables_async(get_engine())
+            async with get_engine().begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
             logger.info("✅ Application tables created")
 
-            # Initialize LangGraph memory system (handles both checkpointing and user profiles)
-            logger.info("🚀 Initializing LangGraph memory system...")
-            self.memory_system = LangGraphMemory(
-                database_url=self.settings.database.url_for_langgraph,
-                openai_api_key=self.settings.openai.api_key.get_secret_value(),
-            )
-            await self.memory_system.initialize()
-            logger.info("✅ LangGraph memory system initialized")
+            # Initialize LangGraph components using proper context managers
+            logger.info("🚀 Initializing LangGraph components...")
+            async with AsyncPostgresSaver.from_conn_string(
+                self.settings.database.url_for_langgraph
+            ) as checkpointer:
+                await checkpointer.setup()
+                logger.info("✅ AsyncPostgresSaver schema initialized")
+
+            with PostgresStore.from_conn_string(
+                self.settings.database.url_for_langgraph
+            ) as store:
+                store.setup()
+                logger.info("✅ PostgresStore schema initialized")
 
             logger.info("🎉 Database initialization completed successfully!")
 
         except Exception as e:
             logger.error(f"❌ Database initialization failed: {e}")
             raise
-        finally:
-            await self.cleanup()
-
-    async def cleanup(self):
-        """Clean up database connections."""
-        if self.memory_system:
-            await self.memory_system.close()
-
-    async def verify_setup(self):
-        """Verify that the LangGraph memory system is properly set up."""
-        logger.info("🔍 Verifying LangGraph setup...")
-
-        try:
-            # Test LangGraph memory system
-            self.memory_system = LangGraphMemory(
-                database_url=self.settings.database.url_for_langgraph,
-                openai_api_key=self.settings.openai.api_key.get_secret_value(),
-            )
-            await self.memory_system.initialize()
-
-            # Test user profile functionality
-            test_profile = await self.memory_system.get_user_profile("test_user")
-
-            if not test_profile:
-                raise RuntimeError("Failed to retrieve test user profile")
-
-            logger.info("✅ User profile functionality verified")
-
-            # Test thread ID generation
-            thread_id = self.memory_system.get_thread_id("test_channel")
-            if not thread_id:
-                raise RuntimeError("Failed to generate thread ID")
-
-            logger.info("✅ Thread management verified")
-            logger.info("🎉 LangGraph verification completed successfully!")
-
-        except Exception as e:
-            logger.error(f"❌ LangGraph verification failed: {e}")
-            raise
-        finally:
-            await self.cleanup()
 
     def print_database_info(self):
         """Print information about the database configuration."""
@@ -125,9 +90,6 @@ async def main():
 
         # Initialize database
         await initializer.initialize_all()
-
-        # Verify setup
-        await initializer.verify_setup()
 
         print("\n🎉 Database initialization completed successfully!")
         print("You can now run the bot with: uv run bot")
@@ -176,9 +138,6 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Database initialization script")
     parser.add_argument(
-        "--verify-only", action="store_true", help="Only verify existing database setup"
-    )
-    parser.add_argument(
         "--reset",
         action="store_true",
         help="Reset database (WARNING: Deletes all data!)",
@@ -188,13 +147,5 @@ if __name__ == "__main__":
 
     if args.reset:
         reset_database()
-    elif args.verify_only:
-
-        async def verify_only():
-            setup_logging()
-            initializer = DatabaseInitializer()
-            await initializer.verify_setup()
-
-        asyncio.run(verify_only())
     else:
         asyncio.run(main())

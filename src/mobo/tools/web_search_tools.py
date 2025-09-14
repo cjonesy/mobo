@@ -12,7 +12,7 @@ from googleapiclient.errors import HttpError  # type: ignore[import-untyped]
 
 from ..config import get_settings
 from .common import registered_tool
-from .rate_limiting import rate_limited
+from ..utils.rate_limiting import rate_limited
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +151,18 @@ async def search_web(
     Returns:
         Formatted string containing search results with titles, URLs, and snippets
     """
-    return await _search_web_impl(query, num_results, search_type, safe_search)
+    try:
+        logger.info(f"🔍 Web search called with query: {query}")
+        result = await _search_web_impl(query, num_results, search_type, safe_search)
+        logger.info(f"🔍 Web search result length: {len(result)}")
+        return result
+    except ValueError as e:
+        # Configuration errors
+        logger.error(f"❌ Web search configuration error: {e}")
+        return f"❌ Web search unavailable: {str(e)}. Please configure GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_CSE_ID environment variables."
+    except Exception as e:
+        logger.error(f"❌ Web search error: {e}")
+        return f"❌ Web search failed: {str(e)}"
 
 
 async def _search_images_impl(

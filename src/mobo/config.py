@@ -125,20 +125,9 @@ class PersonalitySettings(BaseSettings):
     @field_validator("prompt")
     def decode_personality_prompt(cls, v):
         """Auto-decode base64 if the prompt appears to be encoded."""
-        if not v:
-            return v
+        from .utils.text_encoding import decode_base64_if_encoded
 
-        try:
-            import base64
-
-            decoded = base64.b64decode(v).decode("utf-8")
-            print(f"🔓 Auto-decoded base64 personality prompt ({len(decoded)} chars)")
-            return decoded
-        except Exception as e:
-            print(f"⚠️  Failed to decode base64 personality prompt: {e}")
-            # Fall through to return original value
-
-        return v
+        return decode_base64_if_encoded(v)
 
 
 class ImageGenerationSettings(BaseSettings):
@@ -266,9 +255,6 @@ class Settings(BaseSettings):
 
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         default="INFO", description="Logging level"
-    )
-    debug_mode: bool = Field(
-        default=False, description="Enable debug features and verbose logging"
     )
 
     # Tools

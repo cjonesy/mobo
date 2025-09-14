@@ -62,3 +62,14 @@ markers = [
 filterwarnings = [
     "ignore:'audioop' is deprecated and slated for removal in Python 3.13:DeprecationWarning",
 ]
+
+[tool.mypy]
+plugins = ["sqlalchemy.ext.mypy.plugin"]
+python_version = "3.11"
+warn_return_any = false
+warn_unused_configs = true
+disallow_untyped_defs = false
+# Ignore SQLAlchemy assignment issues - known limitation
+[[tool.mypy.overrides]]
+module = "mobo.repositories.*"
+disable_error_code = ["assignment"]

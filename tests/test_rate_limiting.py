@@ -6,14 +6,20 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch, AsyncMock
 
-from mobo.tools.rate_limiting import (
+from mobo.utils.rate_limiting import (
     rate_limited,
     check_and_increment_rate_limit,
     get_rate_limit_status,
-    RateLimitExceeded,
     cleanup_expired_rate_limits,
 )
-from mobo.memory.models import RateLimit
+from mobo.exceptions import RateLimitExceeded
+from mobo.models import RateLimit
+from mobo.repositories.rate_limit_repository import RateLimitRepository
+from mobo.services.rate_limit_service import RateLimitService
+
+# Helper for tests
+_repo = RateLimitRepository()
+_service = RateLimitService()
 
 
 class MockAsyncSession:
@@ -105,7 +111,7 @@ def mock_rate_limit_session(mock_session):
 class TestRateLimiting:
     """Test suite for rate limiting functionality."""
 
-    @patch("mobo.tools.rate_limiting.get_rate_limit_session")
+    @patch("mobo.utils.rate_limiting.get_rate_limit_session")
     @pytest.mark.asyncio
     async def test_first_request_creates_rate_limit(
         self, mock_get_session, mock_rate_limit_session
@@ -122,16 +128,15 @@ class TestRateLimiting:
         assert result["max_usage"] == 10
         assert result["remaining"] == 9
         assert result["period_type"] == "hour"
-        assert result["user_id"] is None
 
-    @patch("mobo.tools.rate_limiting.get_rate_limit_session")
+    @patch("mobo.utils.rate_limiting.get_rate_limit_session")
     @pytest.mark.asyncio
     async def test_subsequent_requests_increment_usage(
         self, mock_get_session, mock_session
     ):
         """Test that subsequent requests increment usage correctly."""
         # Setup existing rate limit
-        period_start, period_end = RateLimit.get_period_bounds("hour")
+        period_start, period_end = _service.get_period_bounds("hour")
         existing_limit = RateLimit(
             resource_name="test-api",
             period_start=period_start,
@@ -159,14 +164,14 @@ class TestRateLimiting:
         assert result["current_usage"] == 5  # 3 + 2
         assert result["remaining"] == 5  # 10 - 5
 
-    @patch("mobo.tools.rate_limiting.get_rate_limit_session")
+    @patch("mobo.utils.rate_limiting.get_rate_limit_session")
     @pytest.mark.asyncio
     async def test_rate_limit_exceeded_raises_exception(
         self, mock_get_session, mock_session
     ):
         """Test that exceeding rate limit raises RateLimitExceeded."""
         # Setup rate limit near maximum
-        period_start, period_end = RateLimit.get_period_bounds("day")
+        period_start, period_end = _service.get_period_bounds("day")
         existing_limit = RateLimit(
             resource_name="test-api",
             period_start=period_start,
@@ -196,50 +201,13 @@ class TestRateLimiting:
         assert exc_info.value.resource == "test-api"
         assert exc_info.value.limit == 10
 
-    @patch("mobo.tools.rate_limiting.get_rate_limit_session")
-    @pytest.mark.asyncio
-    async def test_user_specific_rate_limiting(self, mock_get_session, mock_session):
-        """Test user-specific rate limiting."""
 
-        class AsyncContextManager:
-            async def __aenter__(self):
-                return mock_session
-
-            async def __aexit__(self, exc_type, exc_val, exc_tb):
-                return None
-
-        mock_get_session.return_value = AsyncContextManager()
-
-        # User 1 makes a request
-        result1 = await check_and_increment_rate_limit(
-            resource="user-api",
-            max_requests=5,
-            period_type="hour",
-            user_id="user123",
-            increment=1,
-        )
-
-        # User 2 makes a request
-        result2 = await check_and_increment_rate_limit(
-            resource="user-api",
-            max_requests=5,
-            period_type="hour",
-            user_id="user456",
-            increment=1,
-        )
-
-        # Both should have usage of 1 (separate limits)
-        assert result1["current_usage"] == 1
-        assert result1["user_id"] == "user123"
-        assert result2["current_usage"] == 1
-        assert result2["user_id"] == "user456"
-
-    @patch("mobo.tools.rate_limiting.get_rate_limit_session")
+    @patch("mobo.utils.rate_limiting.get_rate_limit_session")
     @pytest.mark.asyncio
     async def test_get_rate_limit_status(self, mock_get_session, mock_session):
         """Test getting rate limit status."""
         # Setup existing rate limit
-        period_start, period_end = RateLimit.get_period_bounds("day")
+        period_start, period_end = _service.get_period_bounds("day")
         existing_limit = RateLimit(
             resource_name="status-test",
             period_start=period_start,
@@ -269,7 +237,7 @@ class TestRateLimiting:
         assert status["remaining"] == 13
         assert status["is_exceeded"] is False
 
-    @patch("mobo.tools.rate_limiting.get_rate_limit_session")
+    @patch("mobo.utils.rate_limiting.get_rate_limit_session")
     @pytest.mark.asyncio
     async def test_get_rate_limit_status_not_found(
         self, mock_get_session, mock_session
@@ -288,7 +256,7 @@ class TestRateLimiting:
         status = await get_rate_limit_status("nonexistent", "day")
         assert status is None
 
-    @patch("mobo.tools.rate_limiting.get_rate_limit_session")
+    @patch("mobo.utils.rate_limiting.get_rate_limit_session")
     @pytest.mark.asyncio
     async def test_rate_limited_decorator_success(self, mock_get_session, mock_session):
         """Test rate limited decorator with successful request."""
@@ -309,14 +277,14 @@ class TestRateLimiting:
         result = await test_function("hello")
         assert result == "Success: hello"
 
-    @patch("mobo.tools.rate_limiting.get_rate_limit_session")
+    @patch("mobo.utils.rate_limiting.get_rate_limit_session")
     @pytest.mark.asyncio
     async def test_rate_limited_decorator_exceeded(
         self, mock_get_session, mock_session
     ):
         """Test rate limited decorator when limit is exceeded."""
         # Setup rate limit at maximum
-        period_start, period_end = RateLimit.get_period_bounds("minute")
+        period_start, period_end = _service.get_period_bounds("minute")
         existing_limit = RateLimit(
             resource_name="decorator-exceeded",
             period_start=period_start,
@@ -349,7 +317,7 @@ class TestRateLimiting:
         assert "Rate limit reached" in result
         assert "decorator-exceeded" in result
 
-    @patch("mobo.tools.rate_limiting.get_rate_limit_session")
+    @patch("mobo.utils.rate_limiting.get_rate_limit_session")
     @pytest.mark.asyncio
     async def test_rate_limited_decorator_with_cost(
         self, mock_get_session, mock_session
@@ -373,7 +341,7 @@ class TestRateLimiting:
         assert result == "Expensive operation"
 
         # Check that usage increased by 3
-        period_start, period_end = RateLimit.get_period_bounds("hour")
+        period_start, period_end = _service.get_period_bounds("hour")
         key = ("cost-test", period_start, None)
         rate_limit = mock_session.rate_limits.get(key)
         assert rate_limit is not None
@@ -384,33 +352,35 @@ class TestRateLimiting:
         base_time = datetime(2024, 3, 15, 14, 30, 45)
 
         # Test minute bounds
-        start, end = RateLimit.get_period_bounds("minute", base_time)
+        start, end = _service.get_period_bounds("minute", base_time)
         assert start == datetime(2024, 3, 15, 14, 30, 0)
         assert end == datetime(2024, 3, 15, 14, 31, 0)
 
         # Test hour bounds
-        start, end = RateLimit.get_period_bounds("hour", base_time)
+        start, end = _service.get_period_bounds("hour", base_time)
         assert start == datetime(2024, 3, 15, 14, 0, 0)
         assert end == datetime(2024, 3, 15, 15, 0, 0)
 
         # Test day bounds
-        start, end = RateLimit.get_period_bounds("day", base_time)
+        start, end = _service.get_period_bounds("day", base_time)
         assert start == datetime(2024, 3, 15, 0, 0, 0)
         assert end == datetime(2024, 3, 16, 0, 0, 0)
 
         # Test month bounds
-        start, end = RateLimit.get_period_bounds("month", base_time)
+        start, end = _service.get_period_bounds("month", base_time)
         assert start == datetime(2024, 3, 1, 0, 0, 0)
         assert end == datetime(2024, 4, 1, 0, 0, 0)
 
         # Test December month bounds (year rollover)
         dec_time = datetime(2024, 12, 15, 10, 0, 0)
-        start, end = RateLimit.get_period_bounds("month", dec_time)
+        start, end = _service.get_period_bounds("month", dec_time)
         assert start == datetime(2024, 12, 1, 0, 0, 0)
         assert end == datetime(2025, 1, 1, 0, 0, 0)
 
-    def test_rate_limit_model_methods(self):
-        """Test RateLimit model utility methods."""
+    def test_rate_limit_service_methods(self):
+        """Test RateLimit service business logic methods."""
+        from mobo.services.rate_limit_service import RateLimitService
+
         period_start = datetime(2024, 3, 15, 0, 0, 0)
         period_end = datetime(2024, 3, 16, 0, 0, 0)
 
@@ -423,18 +393,20 @@ class TestRateLimiting:
             period_type="day",
         )
 
+        service = RateLimitService()
+
         # Test is_exceeded
-        assert rate_limit.is_exceeded() is False
+        assert service.is_exceeded(rate_limit) is False
         rate_limit.current_usage = 10
-        assert rate_limit.is_exceeded() is True
+        assert service.is_exceeded(rate_limit) is True
 
         # Test can_make_requests
         rate_limit.current_usage = 7
-        assert rate_limit.can_make_requests(1) is True
-        assert rate_limit.can_make_requests(3) is True
-        assert rate_limit.can_make_requests(4) is False
+        assert service.can_make_requests(rate_limit, 1) is True
+        assert service.can_make_requests(rate_limit, 3) is True
+        assert service.can_make_requests(rate_limit, 4) is False
 
         # Test remaining_requests
-        assert rate_limit.remaining_requests() == 3
+        assert service.remaining_requests(rate_limit) == 3
         rate_limit.current_usage = 10
-        assert rate_limit.remaining_requests() == 0
+        assert service.remaining_requests(rate_limit) == 0

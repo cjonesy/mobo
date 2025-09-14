@@ -6,7 +6,7 @@ providing explicit state management and easy debugging.
 """
 
 from typing import TypedDict, List, Dict, Any, Optional
-from datetime import datetime, UTC
+from datetime import datetime
 
 
 class BotState(TypedDict):
@@ -33,24 +33,15 @@ class BotState(TypedDict):
     timestamp: datetime
     """When the message was sent"""
 
+    # Note: discord_context is managed via thread-local storage, not in state
+
     # =============================================================================
     # CONTEXT DATA (Loaded during context phase)
     # =============================================================================
+    # Note: personality is loaded from settings directly, not stored in state
 
-    personality: str
-    """The bot's personality prompt"""
-
-    user_profile: Dict[str, Any]
-    """User profile data (response_tone, likes, dislikes, etc.)"""
-
-    conversation_history: List[Dict[str, Any]]
-    """Recent conversation messages for context"""
-
-    relevant_conversations: List[Dict[str, Any]]
-    """Semantically relevant conversations from RAG search"""
-
-    rag_context: str
-    """Formatted context combining recent and relevant conversations"""
+    user_context: Dict[str, Any]
+    """User context data (response_tone, likes, dislikes, etc.)"""
 
     # =============================================================================
     # LANGGRAPH STATE (Set by chatbot node)
@@ -60,18 +51,15 @@ class BotState(TypedDict):
     """Messages for LangGraph routing and tool execution"""
 
     # =============================================================================
-    # RESPONSE GENERATION (Set by response generator node)
+    # RESPONSE GENERATION (Set by message generator node)
     # =============================================================================
 
-    final_response: str | None
+    final_response: Optional[str]
     """The final text response to send to Discord (None if bot should stay silent)"""
 
     # =============================================================================
     # METADATA (For monitoring and debugging)
     # =============================================================================
-
-    execution_time: float
-    """Total time spent processing this message (seconds)"""
 
     model_calls: int
     """Number of LLM API calls made"""
@@ -79,128 +67,8 @@ class BotState(TypedDict):
     workflow_path: List[str]
     """List of nodes executed in the workflow"""
 
-    debug_info: Dict[str, Any]
-    """Additional debug information"""
-
     extracted_artifacts: List[Dict[str, Any]]
     """Tool artifacts extracted for Discord upload (images, files, etc.)"""
-
-
-# =============================================================================
-# HELPER TYPES FOR SPECIFIC USE CASES
-# =============================================================================
-
-
-class ToolResult(TypedDict):
-    """Standardized format for tool execution results."""
-
-    success: bool
-    """Whether the tool executed successfully"""
-
-    result: Any
-    """The actual result from the tool"""
-
-    summary: Optional[str]
-    """Human-readable summary of what the tool accomplished"""
-
-    error: Optional[str]
-    """Error message if tool failed"""
-
-    execution_time: float
-    """Time taken to execute the tool"""
-
-
-class UserProfileData(TypedDict):
-    """Structure for user profile information."""
-
-    discord_user_id: str
-    """Discord user ID"""
-
-    response_tone: str
-    """Bot's response tone for this user (friendly, neutral, hostile, etc.)"""
-
-    likes: List[str]
-    """Things the user likes"""
-
-    dislikes: List[str]
-    """Things the user dislikes"""
-
-    aliases: List[str]
-    """Alternative names the user wants to be called"""
-
-    last_seen: Optional[datetime]
-    """When user was last active"""
-
-
-class ConversationMessage(TypedDict):
-    """Structure for conversation history messages."""
-
-    role: str
-    """'user' or 'assistant'"""
-
-    content: str
-    """Message content"""
-
-    timestamp: datetime
-    """When the message was sent"""
-
-    user_id: Optional[str]
-    """User ID for user messages"""
-
-
-# =============================================================================
-# STATE UTILITY FUNCTIONS
-# =============================================================================
-
-
-def create_initial_state(
-    user_message: str,
-    user_id: str,
-    channel_id: str,
-    timestamp: Optional[datetime] = None,
-) -> BotState:
-    """
-    Create an initial state object with default values.
-
-    Args:
-        user_message: The Discord message content
-        user_id: Discord user ID
-        channel_id: Discord channel ID
-        timestamp: Message timestamp (defaults to now)
-
-    Returns:
-        BotState with all required fields initialized
-    """
-    if timestamp is None:
-        timestamp = datetime.now(UTC)
-
-    return BotState(
-        # Input data
-        user_message=user_message,
-        user_id=user_id,
-        channel_id=channel_id,
-        timestamp=timestamp,
-        # Context data (to be filled by workflow)
-        personality="",
-        user_profile={},
-        conversation_history=[],
-        relevant_conversations=[],
-        rag_context="",
-        # LangGraph state (to be filled by chatbot)
-        messages=[],
-        # Response generation (to be filled by response generator)
-        final_response="",
-        # Metadata
-        execution_time=0.0,
-        model_calls=0,
-        workflow_path=[],
-        debug_info={},
-        extracted_artifacts=[],
-    )
-
-
-# Tool results are now handled directly by LangGraph ToolNode
-# No need for manual state management
 
 
 def log_workflow_step(state: BotState, node_name: str) -> None:
@@ -211,19 +79,9 @@ def log_workflow_step(state: BotState, node_name: str) -> None:
         state: The bot state to modify
         node_name: Name of the workflow node
     """
-    state["workflow_path"].append(node_name)
-
-
-def add_debug_info(state: BotState, key: str, value: Any) -> None:
-    """
-    Add debug information to the state.
-
-    Args:
-        state: The bot state to modify
-        key: Debug info key
-        value: Debug info value
-    """
-    state["debug_info"][key] = value
+    workflow_path = state.get("workflow_path", [])
+    workflow_path.append(node_name)
+    state["workflow_path"] = workflow_path
 
 
 def format_state_summary(state: BotState) -> str:
@@ -241,7 +99,7 @@ def format_state_summary(state: BotState) -> str:
         f"👤 User: {state['user_id']} in #{state['channel_id']}",
         f"🤖 Chatbot: {len(state.get('messages', []))} messages generated",
         f"💬 Response: {state['final_response'][:100] if state['final_response'] else 'None'}{'...' if state['final_response'] and len(state['final_response']) > 100 else ''}",
-        f"⏱️  Execution: {state['execution_time']:.2f}s, {state['model_calls']} LLM calls",
+        f"🔄 Model Calls: {state['model_calls']}",
         f"🛤️  Path: {' → '.join(state['workflow_path'])}",
     ]
 

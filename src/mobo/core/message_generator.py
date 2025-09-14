@@ -6,14 +6,12 @@ Uses a larger, more creative model focused purely on response generation.
 """
 
 import logging
-import time
 import textwrap
 
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage
 
-from .state import BotState, log_workflow_step, add_debug_info
-from .prompt_helpers import build_user_context_text
+from .state import BotState, log_workflow_step
 from ..config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -21,7 +19,6 @@ logger = logging.getLogger(__name__)
 
 async def message_generator_node(
     state: BotState,
-    memory_system,
 ) -> BotState:
     """
     Generate final response using tool results and personality.
@@ -29,7 +26,6 @@ async def message_generator_node(
     This node takes the tool results from the supervisor and crafts
     a natural, personality-driven response for the user.
     """
-    start_time = time.time()
     log_workflow_step(state, "message_generator")
 
     try:
@@ -52,14 +48,10 @@ async def message_generator_node(
             logger.info(f"🔧 Preserved {len(artifacts_found)} artifacts in state")
 
         # Use already loaded context from the load_context node
-        personality = state["personality"]
-        user_profile = state.get("user_profile", {})
-        rag_context = state.get("rag_context", "")
-
-        # Build user context text
-        profile_text = build_user_context_text(user_profile)
+        user_context = state.get("user_context", {})
 
         settings = get_settings()
+        personality = settings.personality.prompt
 
         system_prompt = textwrap.dedent(
             f"""
@@ -69,17 +61,12 @@ async def message_generator_node(
             {personality}
 
             USER CONTEXT:
-            {profile_text}
-
-            RECENT CONVERSATION HISTORY:
-            {rag_context}
+            {user_context}
 
             RESPONSE GUIDELINES:
             - Be true to your personality and respond naturally
             - Use tool results to enhance your response, don't just repeat them
-            - Remember the conversation history and maintain context
             - For emoji tools: convert emoji names to actual emoji (thumbs_up → 👍, custom emoji → :name: format)
-            - Keep responses under 2000 characters for Discord
             - Show enthusiasm that matches your personality
             - Be conversational and engaging
             - Don't mention that you're using tools or processing results
@@ -94,50 +81,64 @@ async def message_generator_node(
             base_url=settings.openrouter.base_url,
         )
 
-        # Build conversation with original message and tool results
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=f"User message: {state['user_message']}"),
-        ]
+        # Get current turn messages from workflow
+        current_messages = state.get("messages", [])
 
-        # Add tool results as context in a human message instead of raw tool messages
+        # Check if we only have tool messages (indicating ToolNode replaced messages)
+        only_tool_messages = current_messages and all(
+            getattr(msg, "type", None) == "tool" for msg in current_messages
+        )
+
+        # Extract tool results and incorporate them into the system prompt
         tool_results = []
-        for message in state.get("messages", []):
-            if hasattr(message, "tool_call_id") and hasattr(message, "content"):
-                # This is a tool result message
-                tool_results.append(f"Tool result: {message.content}")
+        user_messages = []
 
+        for msg in current_messages:
+            if hasattr(msg, "content") and hasattr(msg, "type"):
+                if msg.type == "human":
+                    user_messages.append(msg)
+                elif msg.type == "tool":
+                    tool_results.append(f"Tool result: {msg.content}")
+
+        # Enhance system prompt with tool results
+        enhanced_system_prompt = system_prompt
         if tool_results:
             tool_context = "\n".join(tool_results)
-            messages.append(
-                HumanMessage(
-                    content=f"Tool results:\n{tool_context}\n\nNow generate a natural response using this information."
-                )
-            )
+            enhanced_system_prompt += f"\n\nTOOL RESULTS:\n{tool_context}\n\nUse the tool results above to inform your response."
+
+        # Build messages for response generation
+        # When we only have tool results, we need to reconstruct the user message from state
+        if only_tool_messages and not user_messages:
+            # Reconstruct user message from state
+            user_message_content = state.get("user_message", "")
+            from langchain_core.messages import HumanMessage
+
+            user_messages = [HumanMessage(content=user_message_content)]
+
+        # Build messages: system prompt + user messages
+        # Tool results are embedded in the enhanced system prompt
+        messages = [SystemMessage(content=enhanced_system_prompt)] + user_messages
 
         # Generate final response
         response = await llm.ainvoke(messages)
 
-        # Store final response in state
-        state["messages"] = [response]
+        # Update messages to include the final response
+        state["messages"] = current_messages + [response]
+
+        # Extract and store final response text
+        content = getattr(response, "content", "")
+        if isinstance(content, list):
+            content = " ".join(str(item) for item in content)
+        state["final_response"] = str(content).strip() if content else ""
 
         # Update metadata
-        execution_time = time.time() - start_time
-        state["execution_time"] += execution_time
-        state["model_calls"] += 1
-        add_debug_info(state, "message_generation_time", execution_time)
+        state["model_calls"] = state.get("model_calls", 0) + 1
 
         logger.info(f"✅ Message generated ({len(response.content)} chars)")
-        logger.debug(f"💬 Generated response: {response.content[:100]}...")
 
         return state
 
     except Exception as e:
         logger.exception(f"❌ Message generation error: {e}")
-
-        # Fallback - use any existing tool results or empty
-        execution_time = time.time() - start_time
-        state["execution_time"] += execution_time
-        add_debug_info(state, "message_generation_error", str(e))
 
         return state

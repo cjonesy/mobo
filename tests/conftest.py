@@ -13,9 +13,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-from mobo.memory.models import Base, User, Conversation
+from mobo.models import User
 from mobo.config import Settings
-from mobo.memory.langgraph_memory import LangGraphMemory
+from mobo.db import Base
 
 
 # Custom pytest markers
@@ -54,8 +54,6 @@ def test_settings():
 @pytest.fixture
 async def test_db_engine():
     """Create a PostgreSQL test database engine."""
-    import os
-    from mobo.memory.models import Base
 
     # Get PostgreSQL test database URL
     test_postgres_url = os.getenv(
@@ -147,22 +145,19 @@ def sample_bot_state():
         "guild_id": "555666777",
         "timestamp": "2024-01-01T00:00:00Z",
         "personality": "You are a helpful Discord bot.",
-        "user_profile": {
+        "user_context": {
             "discord_user_id": "123456789",
             "response_tone": "friendly",
             "likes": ["coding", "music"],
             "dislikes": ["spam"],
         },
-        "conversation_history": [],
         "messages": [],
         "tool_results": {},
         "tool_errors": {},
         "generated_files": [],
         "final_response": "",
         "workflow_path": [],
-        "execution_time": 0.0,
         "model_calls": 0,
-        "debug_info": {},
     }
 
 

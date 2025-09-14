@@ -26,7 +26,9 @@ def get_giphy_api_key() -> str:
 
 
 @registered_tool(response_format="content_and_artifact")
-async def search_gif(query: str, limit: int = 1) -> Tuple[str, Dict]:
+async def search_gif(
+    query: str, limit: int = 1
+) -> Tuple[str, Dict]:
     """
     Search for a GIF using the Giphy API and return it as an attachment.
 

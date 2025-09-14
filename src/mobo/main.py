@@ -12,6 +12,8 @@ from typing import Optional
 from mobo.config import get_settings
 from mobo.discord.client import BotClient
 from mobo.utils.logging import setup_logging
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.store.postgres import PostgresStore
 
 
 class BotApplication:
@@ -22,7 +24,7 @@ class BotApplication:
         self.client: Optional[BotClient] = None
         self.logger = logging.getLogger(__name__)
 
-    async def startup(self):
+    async def startup(self) -> None:
         """Initialize all bot components."""
         self.logger.info("🚀 Starting Discord bot...")
 
@@ -135,8 +137,6 @@ def init_db():
     """Entry point for database initialization using modern LangGraph patterns."""
 
     async def _init():
-        from mobo.memory.langgraph_memory import LangGraphMemory
-
         setup_logging()
         logger = logging.getLogger(__name__)
 
@@ -145,12 +145,17 @@ def init_db():
         try:
             logger.info("🗄️ Initializing LangGraph database schema...")
 
-            # Initialize LangGraph memory system (handles both checkpointing and user profiles)
-            memory_system = LangGraphMemory(
-                database_url=settings.database.url_for_langgraph,
-                openai_api_key=settings.openai.api_key.get_secret_value(),
-            )
-            await memory_system.initialize()
+            async with AsyncPostgresSaver.from_conn_string(
+                settings.database.url_for_langgraph
+            ) as checkpointer:
+                await checkpointer.setup()
+                logger.info("✅ AsyncPostgresSaver schema initialized")
+
+            with PostgresStore.from_conn_string(
+                settings.database.url_for_langgraph
+            ) as store:
+                store.setup()
+                logger.info("✅ PostgresStore schema initialized")
 
             logger.info("✅ LangGraph database initialized successfully!")
 

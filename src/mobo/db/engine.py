@@ -38,27 +38,33 @@ def _cleanup_engine():
     """Clean up the engine on application exit."""
     global _engine
     if _engine is not None:
-        import asyncio
-
         try:
-            # Try to dispose cleanly
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # If we're in an async context, schedule disposal
-                loop.create_task(_engine.dispose())
-            else:
-                # If no loop is running, run disposal synchronously
-                asyncio.run(_engine.dispose())
+            # At exit time, the event loop is usually closed or closing
+            # Just dispose synchronously without trying to use the loop
+            logger.debug("Disposing database engine synchronously")
+            import asyncio
+            
+            # Check if we have a running loop first
+            try:
+                loop = asyncio.get_running_loop()
+                if loop and not loop.is_closed():
+                    # Schedule disposal in the existing loop
+                    loop.create_task(_engine.dispose())
+                    return
+            except RuntimeError:
+                # No event loop running
+                pass
+            
+            # Fallback: Create a new event loop for cleanup
+            new_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(new_loop)
+            try:
+                new_loop.run_until_complete(_engine.dispose())
+            finally:
+                new_loop.close()
+                
         except Exception as e:
-            logger.warning(f"Error disposing database engine: {e}")
+            # Engine disposal failed, but don't crash the exit process
+            logger.debug(f"Engine disposal failed during cleanup: {e}")
         finally:
             _engine = None
-
-
-async def dispose_engine():
-    """Manually dispose of the engine (useful for tests and graceful shutdown)."""
-    global _engine
-    if _engine is not None:
-        await _engine.dispose()
-        _engine = None
-        logger.debug("Database engine disposed")

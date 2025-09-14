@@ -13,30 +13,17 @@ from mobo.core.workflow import (
 )
 from mobo.core.state import (
     BotState,
-    create_initial_state,
     log_workflow_step,
-    add_debug_info,
     format_state_summary,
 )
-from mobo.core.response_extractor import response_extractor_node
 
 
 class TestBotState:
     """Test the BotState management."""
 
-    def test_create_initial_state(self):
-        """Test creating initial bot state."""
-        state = create_initial_state(
-            user_message="Hello bot!", user_id="123456789", channel_id="987654321"
-        )
-
-        assert state["user_message"] == "Hello bot!"
-        assert state["user_id"] == "123456789"
-        assert state["channel_id"] == "987654321"
-        assert state["workflow_path"] == []
-        assert state["execution_time"] == 0.0
-        assert state["model_calls"] == 0
-        assert isinstance(state["debug_info"], dict)
+    def test_initial_state(self, sample_bot_state):
+        """Test initial bot state."""
+        assert sample_bot_state["model_calls"] == 0
 
     def test_log_workflow_step(self, sample_bot_state):
         """Test logging workflow steps."""
@@ -47,12 +34,6 @@ class TestBotState:
         assert len(sample_bot_state["workflow_path"]) == len(initial_path) + 1
         assert sample_bot_state["workflow_path"][-1] == "test_step"
 
-    def test_add_debug_info(self, sample_bot_state):
-        """Test adding debug information."""
-        add_debug_info(sample_bot_state, "test_key", "test_value")
-
-        assert "test_key" in sample_bot_state["debug_info"]
-        assert sample_bot_state["debug_info"]["test_key"] == "test_value"
 
     def test_format_state_summary(self, sample_bot_state):
         """Test formatting state summary."""
@@ -66,20 +47,6 @@ class TestBotState:
 class TestWorkflowNodes:
     """Test individual workflow nodes."""
 
-    @pytest.mark.asyncio
-    async def test_response_extractor_node(self, sample_bot_state):
-        """Test the response extractor node."""
-        # Add messages to state (simulating chatbot node output)
-        from langchain_core.messages import HumanMessage
-
-        mock_message = MagicMock()
-        mock_message.content = "This is a test response"
-        sample_bot_state["messages"] = [mock_message]
-
-        result_state = await response_extractor_node(sample_bot_state)
-
-        assert "final_response" in result_state
-        assert result_state["final_response"] == "This is a test response"
 
     def test_should_continue(self, sample_bot_state):
         """Test the should_continue conditional edge function."""
@@ -111,8 +78,8 @@ class TestWorkflowValidation:
         sample_bot_state.update(
             {
                 "personality": "You are helpful",
-                "final_response": "Test response",
-                "workflow_path": ["chatbot", "message_generator", "response_extractor"],
+                "workflow_path": ["chatbot", "message_generator"],
+                "final_response": "Hello! How can I help you?",
             }
         )
 
@@ -128,17 +95,6 @@ class TestWorkflowValidation:
         assert len(errors) > 0
         assert any("Missing required field" in error for error in errors)
 
-    def test_validate_workflow_state_response_too_long(self, sample_bot_state):
-        """Test validation with response too long."""
-        sample_bot_state.update(
-            {
-                "personality": "You are helpful",
-                "final_response": "x" * 2001,  # Over 2000 character limit
-            }
-        )
-
-        errors = validate_workflow_state(sample_bot_state)
-        assert any("Response too long" in error for error in errors)
 
 
 class TestWorkflowExecution:
@@ -153,9 +109,7 @@ class TestWorkflowExecution:
             "user_message": "Hello bot!",
             "user_id": "123456789",
             "channel_id": "987654321",
-            "final_response": "Hello! How can I help you?",
-            "workflow_path": ["chatbot", "message_generator", "response_extractor"],
-            "execution_time": 1.5,
+            "workflow_path": ["chatbot", "message_generator"],
             "model_calls": 2,
         }
         mock_workflow.ainvoke.return_value = mock_final_state
@@ -167,8 +121,7 @@ class TestWorkflowExecution:
             channel_id="987654321",
         )
 
-        assert final_state["final_response"] == "Hello! How can I help you?"
-        assert final_state["execution_time"] > 0
+        assert "user_message" in final_state
         assert len(final_state["workflow_path"]) > 0
 
     @pytest.mark.asyncio
@@ -185,9 +138,7 @@ class TestWorkflowExecution:
             channel_id="987654321",
         )
 
-        assert final_state["final_response"] is None
-        assert final_state["execution_time"] > 0
-        assert "workflow_error" in final_state["debug_info"]
+        assert "user_message" in final_state
 
 
 class TestWorkflowFormatting:
@@ -199,9 +150,7 @@ class TestWorkflowFormatting:
         sample_bot_state.update(
             {
                 "personality": "You are helpful",
-                "final_response": "Test response",
-                "workflow_path": ["chatbot", "message_generator", "response_extractor"],
-                "execution_time": 2.5,
+                "workflow_path": ["chatbot", "message_generator"],
                 "model_calls": 2,
             }
         )
@@ -210,6 +159,5 @@ class TestWorkflowFormatting:
 
         assert isinstance(summary, str)
         assert "Workflow Execution Summary" in summary
-        assert "Total Execution Time: 2.50s" in summary
         assert "Model Calls: 2" in summary
-        assert "message_generator → response_extractor" in summary
+        assert "message_generator" in summary

@@ -8,15 +8,16 @@ and error scenarios, keeping the main client clean and focused.
 import logging
 import tempfile
 from enum import Enum
-from typing import Any, Dict, Optional, Callable
+from typing import Any, Dict, Optional
 from dataclasses import dataclass
 
 import discord
 import httpx
 
-from ..core.workflow import execute_workflow, format_workflow_summary
-from ..tools.discord_context import set_discord_context, clear_discord_context
+from ..core.workflow import create_workflow_for_message, format_workflow_summary
 from ..config import get_settings, Settings
+from ..services import BotInteractionService
+from ..db import get_session_maker
 
 logger = logging.getLogger(__name__)
 
@@ -33,12 +34,9 @@ class MessageResult(Enum):
 class ProcessingContext:
     """Context needed for message processing."""
 
-    workflow: Any
+    database_url: str
     bot_user: discord.ClientUser
-    debug_mode: bool
-    record_execution_time: Callable[[float], None]
     client: discord.Client
-    memory_system: Any = None
 
 
 class MessageProcessor:
@@ -52,6 +50,8 @@ class MessageProcessor:
 
     def __init__(self, context: ProcessingContext):
         self.context = context
+        self.bot_interaction_service = BotInteractionService()
+        self.session_maker = get_session_maker()
 
     async def handle_message(self, message: discord.Message) -> MessageResult:
         """
@@ -79,16 +79,12 @@ class MessageProcessor:
                 (
                     response_text,
                     response_files,
-                    execution_time,
                 ) = await self._process_message(message)
 
             # Step 3: Send response if we have content
             if response_text and response_text.strip() or response_files:
                 await self._send_response(message, response_text, response_files)
                 logger.info(f"✅ Sent response to {message.author.name}")
-
-                # Record execution time
-                self.context.record_execution_time(execution_time)
 
                 return MessageResult.PROCESSED
             else:
@@ -168,16 +164,17 @@ class MessageProcessor:
             return True, basic_reason
 
         # Check interaction limits and cooldown
-        if hasattr(self.context, "memory_system") and self.context.memory_system:
-            try:
+        try:
+            async with self.session_maker() as session:
                 (
                     can_respond,
                     current_count,
                     status_reason,
-                ) = await self.context.memory_system.should_respond_to_bot(
-                    str(message.author.id),
-                    str(message.channel.id),
-                    settings.bot_interaction.bot_response_cooldown_seconds,
+                ) = await self.bot_interaction_service.should_respond_to_bot(
+                    session=session,
+                    bot_user_id=str(message.author.id),
+                    channel_id=str(message.channel.id),
+                    cooldown_seconds=settings.bot_interaction.bot_response_cooldown_seconds,
                 )
 
                 if (
@@ -190,10 +187,11 @@ class MessageProcessor:
                     )
 
                 # Track this interaction
-                new_count = await self.context.memory_system.track_bot_interaction(
-                    str(message.author.id),
-                    str(message.channel.id),
-                    str(message.guild.id) if message.guild else None,
+                new_count = await self.bot_interaction_service.track_bot_interaction(
+                    session=session,
+                    bot_user_id=str(message.author.id),
+                    channel_id=str(message.channel.id),
+                    guild_id=str(message.guild.id) if message.guild else None,
                 )
                 logger.info(
                     f"🤖 Responding to bot {message.author.name} ({new_count}/{settings.bot_interaction.max_bot_responses})"
@@ -204,13 +202,10 @@ class MessageProcessor:
                     f"{basic_reason} - interaction {new_count}/{settings.bot_interaction.max_bot_responses}",
                 )
 
-            except Exception as e:
-                logger.error(f"Error checking bot interaction limits: {e}")
-                # Fall back to basic response
-                return True, f"{basic_reason} (fallback due to error)"
-        else:
-            # No memory system available, fall back to basic check
-            return True, f"{basic_reason} (no memory system)"
+        except Exception as e:
+            logger.error(f"Error checking bot interaction limits: {e}")
+            # Fall back to basic response
+            return True, f"{basic_reason} (fallback due to error)"
 
     async def _check_bot_mention_or_reply(
         self, message: discord.Message
@@ -251,16 +246,14 @@ class MessageProcessor:
 
     async def _process_message(
         self, message: discord.Message
-    ) -> tuple[str, list[Dict[str, Any]], float]:
+    ) -> tuple[str, list[Dict[str, Any]]]:
         """
         Process a message through the workflow.
 
         Returns:
-            Tuple of (response_text, response_files, execution_time)
+            Tuple of (response_text, response_files)
         """
-        if not self.context.workflow:
-            logger.error("❌ Workflow not initialized")
-            return "", [], 0.0
+        # Workflow will be created per message - no need to check here
 
         # Clean the message content
         cleaned_content = self._clean_message_content(message.content)
@@ -269,38 +262,19 @@ class MessageProcessor:
         if not cleaned_content.strip():
             cleaned_content = await self._handle_mention_only_message(message)
 
-        # Set Discord context for tools
-        set_discord_context(
-            guild_id=str(message.guild.id) if message.guild else None,
+        # Create and execute workflow for this message
+        final_state = await create_workflow_for_message(
+            database_url=self.context.database_url,
+            user_message=cleaned_content,
+            user_id=str(message.author.id),
             channel_id=str(message.channel.id),
-            user_id=str(self.context.bot_user.id),
-            message_author_id=str(message.author.id),
-            client_user=self.context.bot_user,
-            message=message,
-            client=self.context.client,
+            discord_client=self.context.client,
+            discord_message=message,
         )
 
-        try:
-            # Execute the workflow
-            final_state = await execute_workflow(
-                workflow=self.context.workflow,
-                user_message=cleaned_content,
-                user_id=str(message.author.id),
-                channel_id=str(message.channel.id),
-            )
-        finally:
-            # Clear context after workflow execution
-            clear_discord_context()
+        logger.debug(f"🔄 Workflow Summary:\n{format_workflow_summary(final_state)}")
 
-        execution_time = final_state["execution_time"]
-
-        # Log workflow summary in debug mode
-        if self.context.debug_mode:
-            logger.debug(
-                f"🔄 Workflow Summary:\n{format_workflow_summary(final_state)}"
-            )
-
-        # Format response
+        # Get response from state
         response_text = final_state.get("final_response") or ""
         response_files = []
 
@@ -319,7 +293,7 @@ class MessageProcessor:
                     }
                 )
 
-        return response_text, response_files, execution_time
+        return response_text, response_files
 
     async def _prepare_discord_files(
         self, file_data: list[Dict[str, Any]]
@@ -364,15 +338,24 @@ class MessageProcessor:
         text: str,
         file_data: list[Dict[str, Any]],
     ):
-        """Send the bot's response to Discord."""
+        """Send the bot's response to Discord, chunking long messages if needed."""
         # Prepare Discord files for upload
         discord_files, temp_files = await self._prepare_discord_files(file_data)
 
         try:
-            if discord_files:
-                await original_message.reply(text, files=discord_files)
-            else:
-                await original_message.reply(text)
+            # Chunk the message if it's too long for Discord (2000 char limit)
+            messages = self._chunk_message(text)
+
+            for i, message_chunk in enumerate(messages):
+                if i == 0:
+                    # First message: include files and reply to original
+                    if discord_files:
+                        await original_message.reply(message_chunk, files=discord_files)
+                    else:
+                        await original_message.reply(message_chunk)
+                else:
+                    # Subsequent messages: just send to channel
+                    await original_message.channel.send(message_chunk)
         finally:
             # Clean up temporary files
             for temp_file in temp_files:
@@ -380,6 +363,48 @@ class MessageProcessor:
                     temp_file.close()
                 except Exception:
                     pass
+
+    def _chunk_message(self, text: str, max_length: int = 2000) -> list[str]:
+        """
+        Chunk a message into Discord-safe pieces.
+
+        Tries to break at natural boundaries (sentences, then words) to preserve readability.
+        """
+        if len(text) <= max_length:
+            return [text]
+
+        chunks = []
+        remaining = text
+
+        while remaining:
+            if len(remaining) <= max_length:
+                chunks.append(remaining)
+                break
+
+            # Find the best place to cut within max_length
+            chunk = remaining[:max_length]
+
+            # Try to break at sentence boundary (. ! ?)
+            sentence_breaks = [chunk.rfind("."), chunk.rfind("!"), chunk.rfind("?")]
+            best_sentence_break = max(sentence_breaks)
+
+            if (
+                best_sentence_break > max_length * 0.5
+            ):  # Only if we're not cutting too early
+                cut_point = best_sentence_break + 1
+            else:
+                # Try to break at word boundary
+                word_break = chunk.rfind(" ")
+                if word_break > max_length * 0.3:  # Only if we're not cutting too early
+                    cut_point = word_break
+                else:
+                    # Force cut at max_length
+                    cut_point = max_length
+
+            chunks.append(remaining[:cut_point].strip())
+            remaining = remaining[cut_point:].strip()
+
+        return chunks
 
     def _clean_message_content(self, content: str) -> str:
         """Clean message content by removing the bot mention and trimming whitespace."""
@@ -540,8 +565,6 @@ class AdminHandler:
             return await self._handle_model_command(content)
         elif content.startswith("!reload"):
             return await self._handle_reload_command()
-        elif content.startswith("!debug"):
-            return await self._handle_debug_command(content)
 
         return None
 
@@ -578,19 +601,3 @@ class AdminHandler:
         """Handle !reload admin command."""
         # For now, just return status - full implementation would reload components
         return "🔄 Reload command received (Full implementation needed)"
-
-    async def _handle_debug_command(self, content: str) -> str:
-        """Handle !debug admin command."""
-        parts = content.split(maxsplit=1)
-        if len(parts) < 2:
-            return f"Debug mode: {'ON' if self.settings.debug_mode else 'OFF'}"
-
-        action = parts[1].strip().lower()
-        if action in ["on", "true", "enable"]:
-            self.settings.debug_mode = True
-            return "🐛 Debug mode enabled"
-        elif action in ["off", "false", "disable"]:
-            self.settings.debug_mode = False
-            return "🐛 Debug mode disabled"
-        else:
-            return "Usage: !debug [on|off]"
