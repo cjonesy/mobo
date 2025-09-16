@@ -9,7 +9,7 @@ import signal
 import sys
 from typing import Optional
 
-from mobo.config import get_settings
+from mobo.config import settings
 from mobo.discord.client import BotClient
 from mobo.utils.logging import setup_logging
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -20,7 +20,7 @@ class BotApplication:
     """Main application class that manages the bot lifecycle."""
 
     def __init__(self):
-        self.settings = get_settings()
+        self.settings = settings
         self.client: Optional[BotClient] = None
         self.logger = logging.getLogger(__name__)
 
@@ -139,8 +139,6 @@ def init_db():
     async def _init():
         setup_logging()
         logger = logging.getLogger(__name__)
-
-        settings = get_settings()
 
         try:
             logger.info("🗄️ Initializing LangGraph database schema...")

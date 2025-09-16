@@ -11,8 +11,9 @@ from typing import Optional
 from googleapiclient.discovery import build  # type: ignore[import-untyped]
 from googleapiclient.errors import HttpError  # type: ignore[import-untyped]
 
-from ..config import get_settings
-from .common import registered_tool
+from ..config import settings
+from langchain_core.tools import tool
+from .common import register_tool
 from ..utils.rate_limiting import rate_limited
 
 logger = logging.getLogger(__name__)
@@ -20,8 +21,6 @@ logger = logging.getLogger(__name__)
 
 def get_google_custom_search_api_key() -> str:
     """Get Google Custom Search API key."""
-    settings = get_settings()
-
     if not settings.google_search.api_key:
         raise ValueError("Google Custom Search API key not configured")
 
@@ -30,8 +29,6 @@ def get_google_custom_search_api_key() -> str:
 
 def get_google_cse_id() -> str:
     """Get Google Custom Search Engine ID."""
-    settings = get_settings()
-
     if not settings.google_search.cse_id:
         raise ValueError("Google Custom Search Engine ID not configured")
 
@@ -148,7 +145,7 @@ async def _search_web_impl(
         )
 
 
-@registered_tool()
+@tool
 @rate_limited(resource="google-search", max_requests=100, period="day")
 async def search_web(
     query: str,
@@ -196,7 +193,7 @@ async def search_web(
         }
     """
     logger.info(
-        f"⚒️ Calling search_web",
+        "⚒️ Calling search_web",
         extra={
             "query": query,
             "num_results": num_results,
@@ -353,7 +350,7 @@ async def _search_images_impl(
         )
 
 
-@registered_tool()
+@tool
 @rate_limited(resource="google-search", max_requests=100, period="day")
 async def search_images(
     query: str,
@@ -415,3 +412,8 @@ async def search_images(
     return await _search_images_impl(
         query, num_results, image_size, image_type, safe_search
     )
+
+
+# Register tools with the global registry
+register_tool(search_web)
+register_tool(search_images)

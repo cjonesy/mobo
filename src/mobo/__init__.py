@@ -6,9 +6,9 @@ A Discord bot with LangGraph supervisor pattern for intelligent tool orchestrati
 
 __version__ = "0.1.0"
 
-from .config import get_settings
+from .config import settings
 
 __all__ = [
     "__version__",
-    "get_settings",
+    "settings",
 ]

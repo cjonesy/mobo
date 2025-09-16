@@ -1,21 +1,32 @@
 """
-Discord tools with context injection - no more circular imports!
+Discord tools with LangChain native patterns.
 
-This module contains Discord-specific tools that receive context via
-dependency injection instead of importing it themselves.
+This module contains Discord-specific tools using native LangChain @tool decorator
+with structured Pydantic responses for type safety and better integration.
 """
 
-import json
 import logging
 from typing import List
 from langchain_core.runnables import RunnableConfig
-from .common import registered_tool
+from langchain_core.tools import tool
+from .common import register_tool
+from .schemas import (
+    EmojiListResponse,
+    EmojiData,
+    SimpleResponse,
+    UserListResponse,
+    UserData,
+    UserProfileResponse,
+    UserProfile,
+    StickerListResponse,
+    StickerData,
+)
 
 logger = logging.getLogger(__name__)
 
 
-@registered_tool()
-async def list_emoji(config: RunnableConfig) -> str:
+@tool
+async def list_emoji(config: RunnableConfig) -> EmojiListResponse:
     """Lists all emoji available to the bot for use in responses and reactions.
 
     Returns formatted emoji data with ready-to-use strings for embedding in messages
@@ -40,7 +51,7 @@ async def list_emoji(config: RunnableConfig) -> str:
         config: Runtime configuration containing Discord client context.
 
     Returns:
-        JSON string containing emoji data or error information.
+        Structured response containing emoji data or error information.
     """
     logger.info("😃 Calling list_emoji")
 
@@ -54,32 +65,30 @@ async def list_emoji(config: RunnableConfig) -> str:
             raise ValueError("No Discord client available")
 
         emojis = [
-            {
-                "name": emoji.name,
-                "message_embed_format": f"<:{emoji.name}:{emoji.id}>",
-                "reaction_format": emoji.name,
-                "id": str(emoji.id),
-            }
+            EmojiData(
+                name=emoji.name,
+                message_embed_format=f"<:{emoji.name}:{emoji.id}>",
+                reaction_format=emoji.name,
+                id=str(emoji.id),
+            )
             for emoji in client.emojis
             if not emoji.animated
         ]
 
         logger.info(f"✅ Found {len(emojis)} emoji")
 
-        return json.dumps(
-            {
-                "success": True,
-                "emojis": emojis,
-                "total": len(emojis),
-            }
+        return EmojiListResponse(
+            success=True,
+            emojis=emojis,
+            total=len(emojis),
         )
 
     except Exception as e:
         logger.error(f"❌ Failed to list emoji: {e}")
-        return json.dumps({"success": False, "error": str(e)})
+        return EmojiListResponse(success=False, error=str(e))
 
 
-@registered_tool()
+@tool
 async def add_reaction(config: RunnableConfig, emoji: str) -> str:
     """Adds a reaction emoji to the user's message.
 
@@ -95,7 +104,7 @@ async def add_reaction(config: RunnableConfig, emoji: str) -> str:
     Returns:
         Empty string (reactions don't need text responses).
     """
-    logger.info(f"🧐 Calling add_reaction", extra={"emoji": emoji})
+    logger.info("🧐 Calling add_reaction", extra={"emoji": emoji})
 
     try:
         if not config or "configurable" not in config:
@@ -117,13 +126,13 @@ async def add_reaction(config: RunnableConfig, emoji: str) -> str:
         return ""
 
 
-@registered_tool()
+@tool
 async def create_poll(
     config: RunnableConfig,
     question: str,
     options: List[str],
     duration_hours: int = 1,
-) -> str:
+) -> SimpleResponse:
     """Creates a Discord poll in the current channel with multiple choice options.
 
     Polls allow users to vote on questions and see real-time results.
@@ -148,7 +157,7 @@ async def create_poll(
         JSON string with success status and error details if applicable.
     """
     logger.info(
-        f"🗳️ Calling create_poll",
+        "🗳️ Calling create_poll",
         extra={
             "question": question,
             "options": options,
@@ -173,19 +182,19 @@ async def create_poll(
         )
 
         logger.info(f"✅ Poll created successfully with {len(options)} options")
-        return json.dumps({"success": True})
+        return SimpleResponse(success=True)
 
     except Exception as e:
         logger.error(f"❌ Failed to create poll: {e}")
-        return json.dumps({"success": False, "error": str(e)})
+        return SimpleResponse(success=False, error=str(e))
 
 
-@registered_tool()
+@tool
 async def set_activity(
     config: RunnableConfig,
     activity_type: str = "playing",
     activity_name: str = "",
-) -> str:
+) -> SimpleResponse:
     """Updates the bot's activity status that appears in the user list.
 
     Activity status shows what the bot is currently doing or engaged with,
@@ -210,7 +219,7 @@ async def set_activity(
         JSON string with success status and error details if applicable.
     """
     logger.info(
-        f"🎧 Calling set_activity",
+        "🎧 Calling set_activity",
         extra={"activity_type": activity_type, "activity_name": activity_name},
     )
 
@@ -225,15 +234,15 @@ async def set_activity(
         await client.set_activity(activity_type, activity_name)
         logger.info(f"✅ Activity set to '{activity_type} {activity_name}'")
 
-        return json.dumps({"success": True})
+        return SimpleResponse(success=True)
 
     except Exception as e:
         logger.error(f"❌ Failed to set activity: {e}")
-        return json.dumps({"success": False, "error": str(e)})
+        return SimpleResponse(success=False, error=str(e))
 
 
-@registered_tool()
-async def list_chat_users(config: RunnableConfig) -> str:
+@tool
+async def list_chat_users(config: RunnableConfig) -> UserListResponse:
     """Retrieves information about all users currently in the Discord channel.
 
     Provides detailed user data including names, IDs, mentions, and online status
@@ -264,7 +273,7 @@ async def list_chat_users(config: RunnableConfig) -> str:
     Returns:
         JSON string with user data including names, IDs, mentions, and status.
     """
-    logger.info(f"🧍 Calling list_chat_users")
+    logger.info("🧍 Calling list_chat_users")
 
     try:
         if not config or "configurable" not in config:
@@ -276,55 +285,49 @@ async def list_chat_users(config: RunnableConfig) -> str:
             raise ValueError("No message available")
 
         users = [
-            {
-                "name": member.name,
-                "id": str(member.id),
-                "display_name": member.display_name,
-                "global_name": member.global_name,
-                "nickname": member.nick,
-                "mention": member.mention,
-                "status": (
-                    str(member.status) if hasattr(member, "status") else "unknown"
-                ),
-            }
+            UserData(
+                name=member.name,
+                id=str(member.id),
+                display_name=member.display_name,
+                global_name=member.global_name,
+                nickname=member.nick,
+                mention=member.mention,
+                status=str(member.status) if hasattr(member, "status") else "unknown",
+            )
             for member in message.channel.members
             if not member.bot
         ]
 
         bots = [
-            {
-                "name": member.name,
-                "id": str(member.id),
-                "display_name": member.display_name,
-                "global_name": member.global_name,
-                "nickname": member.nick,
-                "mention": member.mention,
-                "status": (
-                    str(member.status) if hasattr(member, "status") else "unknown"
-                ),
-            }
+            UserData(
+                name=member.name,
+                id=str(member.id),
+                display_name=member.display_name,
+                global_name=member.global_name,
+                nickname=member.nick,
+                mention=member.mention,
+                status=str(member.status) if hasattr(member, "status") else "unknown",
+            )
             for member in message.channel.members
             if member.bot
         ]
 
         logger.info(f"✅ Found {len(users)} users and {len(bots)} bots")
 
-        return json.dumps(
-            {
-                "success": True,
-                "users": users,
-                "bots": bots,
-                "total": len(users) + len(bots),
-            }
+        return UserListResponse(
+            success=True,
+            users=users,
+            bots=bots,
+            total=len(users) + len(bots),
         )
 
     except Exception as e:
         logger.error(f"❌ Failed to list users: {e}")
-        return json.dumps({"success": False, "error": str(e)})
+        return UserListResponse(success=False, error=str(e))
 
 
-@registered_tool()
-async def list_stickers(config: RunnableConfig) -> str:
+@tool
+async def list_stickers(config: RunnableConfig) -> StickerListResponse:
     """Lists all stickers available to the bot in the current server.
 
     Stickers are large emoji-like images that can be sent as messages
@@ -350,7 +353,7 @@ async def list_stickers(config: RunnableConfig) -> str:
     Returns:
         JSON string with sticker data including names, IDs, and descriptions.
     """
-    logger.info(f"🎨 Calling list_stickers")
+    logger.info("🎨 Calling list_stickers")
 
     try:
         if not config or "configurable" not in config:
@@ -362,28 +365,28 @@ async def list_stickers(config: RunnableConfig) -> str:
             raise ValueError("No Discord client available")
 
         stickers = [
-            {
-                "name": sticker.name,
-                "id": str(sticker.id),
-                "description": sticker.description or "",
-            }
+            StickerData(
+                name=sticker.name,
+                id=str(sticker.id),
+                description=sticker.description or "",
+            )
             for sticker in client.stickers
             if sticker.available
         ]
 
         logger.info(f"✅ Found {len(stickers)} stickers")
 
-        return json.dumps({"success": True, "stickers": stickers})
+        return StickerListResponse(success=True, stickers=stickers)
 
     except Exception as e:
         logger.error(f"❌ Failed to list stickers: {e}")
-        return json.dumps({"success": False, "error": str(e)})
+        return StickerListResponse(success=False, error=str(e))
 
 
-@registered_tool()
+@tool
 async def send_sticker(
     config: RunnableConfig, sticker_name: str, message_text: str = ""
-) -> str:
+) -> SimpleResponse:
     """Sends a sticker to the current channel, optionally with accompanying text.
 
     Stickers are large animated or static images that can express emotions,
@@ -407,7 +410,7 @@ async def send_sticker(
     Returns:
         JSON string with success status and error details if applicable.
     """
-    logger.info(f"🌟 Calling send_sticker", extra={"sticker_name": sticker_name})
+    logger.info("🌟 Calling send_sticker", extra={"sticker_name": sticker_name})
 
     try:
         if not config or "configurable" not in config:
@@ -426,15 +429,15 @@ async def send_sticker(
         )
 
         logger.info(f"✅ Sticker {sticker_name} sent successfully")
-        return json.dumps({"success": True})
+        return SimpleResponse(success=True)
 
     except Exception as e:
         logger.error(f"❌ Failed to send sticker {sticker_name}: {e}")
-        return json.dumps({"success": False, "error": str(e)})
+        return SimpleResponse(success=False, error=str(e))
 
 
-@registered_tool()
-async def get_user_profile(config: RunnableConfig, user: str) -> str:
+@tool
+async def get_user_profile(config: RunnableConfig, user: str) -> UserProfileResponse:
     """Retrieves detailed profile information about a specific Discord user.
 
     Provides comprehensive user data including account details, server information,
@@ -471,7 +474,7 @@ async def get_user_profile(config: RunnableConfig, user: str) -> str:
     Returns:
         JSON string with user profile data including roles, status, and activity.
     """
-    logger.info(f"🙇 Calling get_user_profile", extra={"user": user})
+    logger.info("🙇 Calling get_user_profile", extra={"user": user})
 
     try:
         if not config or "configurable" not in config:
@@ -483,17 +486,31 @@ async def get_user_profile(config: RunnableConfig, user: str) -> str:
         if not message or not client:
             raise ValueError("No message or client available")
 
-        user_profile = await client.get_user_profile(user, message.guild)
+        user_profile_data = await client.get_user_profile(user, message.guild)
 
-        if not user_profile or "error" in user_profile:
-            return json.dumps(
-                {"success": False, "error": "Could not retrieve profile for user"}
+        if not user_profile_data or "error" in user_profile_data:
+            return UserProfileResponse(
+                success=False, error="Could not retrieve profile for user"
             )
+
+        # Convert to structured UserProfile
+        profile = UserProfile(**user_profile_data)
 
         logger.info(f"✅ Found user profile for {user}")
 
-        return json.dumps({"success": True, "profile": user_profile})
+        return UserProfileResponse(success=True, profile=profile)
 
     except Exception as e:
         logger.error(f"❌ Failed to get user profile: {e}")
-        return json.dumps({"success": False, "error": str(e)})
+        return UserProfileResponse(success=False, error=str(e))
+
+
+# Register all tools with the global registry
+register_tool(list_emoji)
+register_tool(add_reaction)
+register_tool(create_poll)
+register_tool(set_activity)
+register_tool(list_chat_users)
+register_tool(list_stickers)
+register_tool(send_sticker)
+register_tool(get_user_profile)

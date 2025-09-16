@@ -8,16 +8,15 @@ and potentially other OpenAI services in the future.
 import logging
 from typing import Tuple, Dict
 from openai import AsyncOpenAI
-from ..config import get_settings
-from .common import registered_tool
+from ..config import settings
+from langchain_core.tools import tool
+from .common import register_tool
 
 logger = logging.getLogger(__name__)
 
 
 def get_openai_client() -> AsyncOpenAI:
     """Get configured OpenAI client."""
-    settings = get_settings()
-
     if not settings.openai.api_key:
         raise ValueError("OpenAI API key not configured")
 
@@ -27,7 +26,7 @@ def get_openai_client() -> AsyncOpenAI:
     )
 
 
-@registered_tool(response_format="content_and_artifact")
+@tool
 async def generate_image(prompt: str) -> Tuple[str, Dict]:
     """
     Generates an image using DALL-E based on a text prompt.
@@ -44,11 +43,9 @@ async def generate_image(prompt: str) -> Tuple[str, Dict]:
     Returns:
         Tuple of (content_text, image_artifact)
     """
-    logger.info(f"⚒️ Calling generate_image", extra={"prompt": prompt[:50]})
+    logger.info("⚒️ Calling generate_image", extra={"prompt": prompt[:50]})
     try:
         client = get_openai_client()
-        settings = get_settings()
-
         response = await client.images.generate(
             prompt=prompt,
             n=1,
@@ -78,3 +75,7 @@ async def generate_image(prompt: str) -> Tuple[str, Dict]:
     except Exception as e:
         logger.error(f"❌ Image generation failed for prompt '{prompt[:50]}...': {e}")
         return "", {}
+
+
+# Register tool with the global registry
+register_tool(generate_image)

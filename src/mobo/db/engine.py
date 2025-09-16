@@ -6,7 +6,7 @@ import atexit
 import logging
 from typing import Optional
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
-from mobo.config import get_settings
+from mobo.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,6 @@ def get_engine() -> AsyncEngine:
     global _engine
 
     if _engine is None:
-        settings = get_settings()
         _engine = create_async_engine(
             url=settings.database.url,
             echo=settings.database.echo,

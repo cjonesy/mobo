@@ -2,17 +2,19 @@
 Message generator node for the LangGraph workflow.
 
 This node takes tool results and generates the final personality-driven response.
-Uses a larger, more creative model focused purely on response generation.
+Uses LangChain's native message handling patterns for cleaner integration.
 """
 
 import logging
 import textwrap
 
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import BaseMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from typing import List
 
 from .state import BotState
-from ..config import get_settings
+from ..config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -29,26 +31,9 @@ async def message_generator_node(
     logger.info("✒️ Creating personality-driven response")
 
     try:
-        messages_in_state = state.get("messages", [])
-        artifacts_found = []
-        for msg in messages_in_state:
-            if (
-                hasattr(msg, "tool_call_id")
-                and hasattr(msg, "artifact")
-                and msg.artifact
-            ):
-                artifacts_found.append(msg.artifact)
-
-        if artifacts_found:
-            state["extracted_artifacts"] = artifacts_found
-
-        user_context = state.get("user_context", {})
-
-        settings = get_settings()
-        personality = settings.personality.prompt
-
-        system_prompt = textwrap.dedent(
-            f"""
+        # Create system prompt template with proper variable placeholders
+        system_prompt_template = textwrap.dedent(
+            """
             You are generating the final response for a Discord bot.
 
             PERSONALITY:
@@ -65,7 +50,17 @@ async def message_generator_node(
             """
         ).strip()
 
-        # Use a larger model for creative response generation
+        # Extract artifacts from messages
+        state["extracted_artifacts"] = [
+            msg.artifact
+            for msg in state.get("messages", [])
+            if (
+                hasattr(msg, "tool_call_id")
+                and hasattr(msg, "artifact")
+                and msg.artifact
+            )
+        ]
+
         llm = ChatOpenAI(
             model=settings.response_llm.model,
             temperature=settings.response_llm.temperature,
@@ -73,50 +68,62 @@ async def message_generator_node(
             base_url=settings.openrouter.base_url,
         )
 
-        # Get current turn messages from workflow
-        current_messages = state.get("messages", [])
-
-        logger.info(f"📝 Current message count: {len(current_messages)}")
-
-        # Check if we only have tool messages (indicating ToolNode replaced messages)
-        only_tool_messages = current_messages and all(
-            getattr(msg, "type", None) == "tool" for msg in current_messages
+        prompt_template = ChatPromptTemplate.from_messages(
+            [
+                ("system", system_prompt_template),
+                MessagesPlaceholder("conversation_history", optional=True),
+                ("human", "{user_input}"),
+            ]
         )
 
-        logger.info(f"🔍 Only tool messages: {only_tool_messages}")
+        # Filter and organize messages using LangChain patterns
+        conversation_history: List[BaseMessage] = []
+        tool_context_parts = []
 
-        # Extract tool results and incorporate them into the system prompt
-        tool_results = []
-        user_messages = []
+        current_messages = state.get("messages", [])
 
+        # Separate tool results from conversation messages
         for msg in current_messages:
-            if hasattr(msg, "content") and hasattr(msg, "type"):
-                if msg.type == "human":
-                    user_messages.append(msg)
-                elif msg.type == "tool":
-                    tool_results.append(f"Tool result: {msg.content}")
+            if hasattr(msg, "type"):
+                if msg.type == "tool":
+                    # Extract tool results for context
+                    tool_context_parts.append(f"Tool result: {msg.content}")
+                elif msg.type in ["human", "ai", "assistant"]:
+                    conversation_history.append(msg)
 
-        # Enhance system prompt with tool results
-        enhanced_system_prompt = system_prompt
-        if tool_results:
-            tool_context = "\n".join(tool_results)
-            enhanced_system_prompt += f"\n\nTOOL RESULTS:\n{tool_context}\n\nUse the tool results above to inform your response."
+        # Create enhanced system prompt template that includes tool results as a variable
+        enhanced_system_prompt_template = (
+            system_prompt_template
+            + textwrap.dedent(
+                """
 
-        # Build messages for response generation
-        # When we only have tool results, we need to reconstruct the user message from state
-        if only_tool_messages and not user_messages:
-            # Reconstruct user message from state
-            user_message_content = state.get("user_message", "")
-            from langchain_core.messages import HumanMessage
+            TOOL RESULTS:
+            {tool_results}
 
-            user_messages = [HumanMessage(content=user_message_content)]
+            Use the tool results above to inform your response.
+            """
+            ).strip()
+        )
 
-        # Build messages: system prompt + user messages
-        # Tool results are embedded in the enhanced system prompt
-        messages = [SystemMessage(content=enhanced_system_prompt)] + user_messages
+        prompt_template = ChatPromptTemplate.from_messages(
+            [
+                ("system", enhanced_system_prompt_template),
+                MessagesPlaceholder("conversation_history", optional=True),
+                ("human", "{user_input}"),
+            ]
+        )
 
-        # Generate final response
-        response = await llm.ainvoke(messages)
+        # Create the chain and invoke with structured data
+        chain = prompt_template | llm
+        response = await chain.ainvoke(
+            {
+                "personality": settings.personality.prompt,
+                "user_context": state.get("user_context", {}),
+                "conversation_history": conversation_history,
+                "user_input": state.get("user_message", ""),
+                "tool_results": "\n".join(tool_context_parts),
+            }
+        )
 
         # Update messages to include the final response
         state["messages"] = current_messages + [response]
@@ -127,9 +134,11 @@ async def message_generator_node(
             content = " ".join(str(item) for item in content)
         state["final_response"] = str(content).strip() if content else ""
 
-        logger.info(f"📝 Final response: {state['final_response'][:50]}...")
+        final_resp = state.get("final_response", "")
+        logger.info(
+            f"📝 Final response: {final_resp[:50] if final_resp else 'None'}..."
+        )
 
-        # Update metadata
         state["model_calls"] = state.get("model_calls", 0) + 1
 
         return state

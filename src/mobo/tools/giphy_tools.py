@@ -9,23 +9,22 @@ import logging
 import aiohttp
 from typing import Tuple, Dict
 
-from ..config import get_settings
-from .common import registered_tool
+from ..config import settings
+from langchain_core.tools import tool
+from .common import register_tool
 
 logger = logging.getLogger(__name__)
 
 
 def get_giphy_api_key() -> str:
     """Get Giphy API key."""
-    settings = get_settings()
-
     if not settings.giphy.api_key:
         raise ValueError("Giphy API key not configured")
 
     return settings.giphy.api_key.get_secret_value()
 
 
-@registered_tool(response_format="content_and_artifact")
+@tool
 async def search_gif(query: str, limit: int = 1) -> Tuple[str, Dict]:
     """
     Searches for a GIF using the Giphy API and returns it as an attachment.
@@ -43,7 +42,7 @@ async def search_gif(query: str, limit: int = 1) -> Tuple[str, Dict]:
     Returns:
         Tuple of (content_text, gif_artifact)
     """
-    logger.info(f"⚒️ Calling search_gif", extra={"query": query, "limit": limit})
+    logger.info("⚒️ Calling search_gif", extra={"query": query, "limit": limit})
     try:
         api_key = get_giphy_api_key()
 
@@ -88,3 +87,7 @@ async def search_gif(query: str, limit: int = 1) -> Tuple[str, Dict]:
     except Exception as e:
         logger.error(f"❌ GIF search failed for query '{query}': {e}")
         return f"Sorry, I encountered an error searching for GIFs: {str(e)}", {}
+
+
+# Register tool with the global registry
+register_tool(search_gif)

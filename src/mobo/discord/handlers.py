@@ -15,7 +15,7 @@ import discord
 import httpx
 
 from ..core.workflow import create_workflow_for_message, format_workflow_summary
-from ..config import get_settings, Settings
+from ..config import settings, Settings
 from ..services import BotInteractionService
 from ..db import get_session_maker
 
@@ -150,8 +150,6 @@ class MessageProcessor:
         Returns:
             Tuple of (should_respond, reason)
         """
-        settings = get_settings()
-
         # Check if we should respond based on mentions/replies first
         should_respond_basic, basic_reason = await self._check_bot_mention_or_reply(
             message

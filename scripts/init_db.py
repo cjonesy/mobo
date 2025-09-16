@@ -16,7 +16,7 @@ project_root = Path(__file__).parent.parent
 src_path = project_root / "src"
 sys.path.insert(0, str(src_path))
 
-from mobo.config import get_settings, Settings
+from mobo.config import settings, Settings
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.store.postgres import PostgresStore
 from mobo.utils.logging import setup_logging
@@ -32,7 +32,7 @@ class DatabaseInitializer:
     """Handles database initialization and setup using modern LangGraph patterns."""
 
     def __init__(self):
-        self.settings: Settings = get_settings()
+        self.settings: Settings = settings
         self.session_maker = get_session_maker()
 
     async def initialize_all(self):
@@ -99,6 +99,7 @@ async def main():
 
         # Clean up engine connections to avoid shutdown errors
         from mobo.db.engine import _cleanup_engine
+
         _cleanup_engine()
         logger.info("✅ Database connections cleaned up")
 
@@ -115,7 +116,6 @@ def reset_database():
 
     async def _reset():
         setup_logging()
-        settings = get_settings()
 
         # Confirm deletion
         print("⚠️  WARNING: This will delete ALL data in the database!")
@@ -140,6 +140,7 @@ def reset_database():
 
         # Clean up engine connections to avoid shutdown errors
         from mobo.db.engine import _cleanup_engine
+
         _cleanup_engine()
         logger.info("✅ Database connections cleaned up")
 

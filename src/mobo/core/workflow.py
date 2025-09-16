@@ -18,21 +18,13 @@ from langgraph.graph import StateGraph, END
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import (
-    SystemMessage,
-    HumanMessage,
-    BaseMessage,
-    AIMessage,
-    ToolMessage,
-)
+from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
+from langchain_core.prompts import ChatPromptTemplate
 
-from .state import (
-    BotState,
-    format_state_summary,
-)
+from .state import BotState, format_state_summary
 from .message_generator import message_generator_node
-from ..config import get_settings
+from ..config import settings
 from ..tools import get_all_tools
 from ..services import UserService
 from ..db import get_session_maker
@@ -42,17 +34,29 @@ from langgraph.store.postgres import PostgresStore
 logger = logging.getLogger(__name__)
 
 
-def get_config_for_thread(thread_id: str) -> RunnableConfig:
+def get_config_for_thread(
+    thread_id: str, discord_client=None, discord_message=None
+) -> RunnableConfig:
     """
-    Get LangGraph config for thread-based conversation.
+    Get LangGraph config for thread-based conversation with Discord context.
 
     Args:
         thread_id: Thread identifier
+        discord_client: Discord client instance for tools
+        discord_message: Original Discord message for tools
 
     Returns:
-        LangGraph configuration dictionary
+        LangGraph configuration dictionary with Discord context
     """
-    return RunnableConfig(configurable={"thread_id": thread_id})
+    config = RunnableConfig(configurable={"thread_id": thread_id})
+
+    # Add Discord context if available
+    if discord_client:
+        config["configurable"]["discord_client"] = discord_client
+    if discord_message:
+        config["configurable"]["discord_message"] = discord_message
+
+    return config
 
 
 async def chatbot_node(state: BotState) -> BotState:
@@ -66,14 +70,9 @@ async def chatbot_node(state: BotState) -> BotState:
     logger.info("💼 Analyzing message for tool usage")
 
     try:
-
-        user_context = state.get("user_context", {})
-
-        settings = get_settings()
-        personality = settings.personality.prompt
-
-        system_prompt = textwrap.dedent(
-            f"""
+        # Create system prompt template with proper variable placeholders
+        system_prompt_template = textwrap.dedent(
+            """
             You are a supervisor for a Discord bot with access to tools.
             Use your personality to decide what tools would enhance the interaction.
 
@@ -92,7 +91,7 @@ async def chatbot_node(state: BotState) -> BotState:
             You are choosing tools for the response.
 
             The message generator will create the final response with your personality.
-        """
+            """
         ).strip()
 
         llm = ChatOpenAI(
@@ -113,25 +112,25 @@ async def chatbot_node(state: BotState) -> BotState:
             logger.info("💼 No tools available")
             llm_with_tools = llm
 
-        current_user_message = HumanMessage(content=state["user_message"])
+        prompt_template = ChatPromptTemplate.from_messages(
+            [("system", system_prompt_template), ("human", "{user_input}")]
+        )
 
-        conversation = [SystemMessage(content=system_prompt), current_user_message]
+        # Create the chain and invoke with template variables
+        chain = prompt_template | llm_with_tools
+        response = await chain.ainvoke(
+            {
+                "personality": settings.personality.prompt,
+                "user_context": state.get("user_context", {}),
+                "user_input": state.get("user_message", ""),
+            }
+        )
 
-        response = await llm_with_tools.ainvoke(conversation)
+        current_user_message = HumanMessage(content=state.get("user_message", ""))
 
-        # Log tool call decision
         if hasattr(response, "tool_calls") and response.tool_calls:
-            tool_names = [
-                tool_call.get("name", "unknown") for tool_call in response.tool_calls
-            ]
-            logger.info(
-                f"💼 Chose {len(response.tool_calls)} tools",
-                extra={"tools": tool_names},
-            )
-            for i, tool_call in enumerate(response.tool_calls):
-                tool_name = tool_call.get("name", "unknown")
-                tool_args = tool_call.get("args", {})
-                logger.debug(f"💼 Tool {i+1} - {tool_name} with args: {tool_args}")
+            tools = [tc.get("name", "unknown") for tc in response.tool_calls]
+            logger.info(f"💼 Chose {len(response.tool_calls)} tools: {tools}")
         else:
             logger.info("💼 No tools needed, proceeding to response")
 
@@ -189,20 +188,7 @@ async def load_context_node_with_store(
         namespace = ("conversations", f"channel_{channel_id}")
         recent_messages = await store.asearch(namespace, limit=10)  # type: ignore
 
-        conversation_context = []
-        for item in recent_messages:
-            msg = item.value
-            conversation_context.append(
-                {
-                    "role": msg.get("role", "user"),
-                    "content": msg.get("content", ""),
-                    "timestamp": msg.get("timestamp", ""),
-                }
-            )
-
-        conversation_context.sort(key=lambda x: x["timestamp"])
-
-        logger.info(f"📑 Loaded {len(conversation_context)} messages from context")
+        logger.info(f"📑 Loaded {len(recent_messages)} messages from context")
 
         state["user_context"] = user_context
         return state
@@ -393,11 +379,11 @@ async def execute_workflow(
     """
     logger.info("📨 Executing workflow")
     thread_id = f"discord_channel_{channel_id}"
-    config = get_config_for_thread(thread_id)
-
-    if discord_client or discord_message:
-        config["configurable"]["discord_client"] = discord_client
-        config["configurable"]["discord_message"] = discord_message
+    config = get_config_for_thread(
+        thread_id=thread_id,
+        discord_client=discord_client,
+        discord_message=discord_message,
+    )
 
     current_state: BotState
     try:
