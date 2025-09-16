@@ -28,7 +28,7 @@ def registered_tool(name: Optional[str] = None, **langchain_kwargs):
     """
     Decorator that creates a LangChain tool.
 
-    Tools can access runtime context (Discord client, message, etc.) 
+    Tools can access runtime context (Discord client, message, etc.)
     via the RunnableConfig parameter.
 
     Args:
@@ -46,7 +46,9 @@ def registered_tool(name: Optional[str] = None, **langchain_kwargs):
 
     def decorator(func):
         # Apply LangChain's tool decorator directly
-        langchain_decorated = langchain_tool(**langchain_kwargs)(func)
+        langchain_decorated = langchain_tool(parse_docstring=True, **langchain_kwargs)(
+            func
+        )
 
         # Set the tool name if provided
         if name:

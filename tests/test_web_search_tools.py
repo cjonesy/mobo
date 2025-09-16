@@ -2,6 +2,7 @@
 Unit tests for web search tools with mocked Google API responses.
 """
 
+import json
 import pytest
 from unittest.mock import Mock, patch, AsyncMock
 from googleapiclient.errors import HttpError
@@ -83,15 +84,18 @@ class TestWebSearchTools:
             "customsearch", "v1", developerKey="test_api_key"
         )
         mock_google_service.cse().list.assert_called_once_with(
-            q="Python programming", cx="test_cse_id", num=2, safe="active"
+            q="Python programming", cx="test_cse_id", num=2, safe="off"
         )
 
         # Verify result format
-        assert "Search results for 'Python programming'" in result
+        result_data = json.loads(result)
+        assert result_data["success"] is True
+        assert result_data["query"] == "Python programming"
         assert "Python Programming Language" in result
         assert "https://www.python.org/" in result
         assert "Python is a programming language" in result
-        assert "Found 1000000 results in 0.45 seconds" in result
+        assert result_data["total_results"] == "1000000"
+        assert result_data["search_time"] == 0.45
 
     @patch("mobo.tools.web_search_tools.build")
     @patch("mobo.tools.web_search_tools.get_google_custom_search_api_key")
@@ -213,10 +217,12 @@ class TestWebSearchTools:
         )
 
         # Verify result format
-        assert "Image search results for 'cute cats'" in result
+        result_data = json.loads(result)
+        assert result_data["success"] is True
+        assert result_data["query"] == "cute cats"
         assert "Cute Cat Photo" in result
         assert "https://example.com/cat1.jpg" in result
-        assert "Found 50000 total image results" in result
+        assert result_data["total_results"] == "50000"
 
     @pytest.mark.asyncio
     async def test_search_web_parameter_validation(self):
@@ -261,5 +267,5 @@ class TestWebSearchTools:
                 q="test",
                 cx="test_cse_id",
                 num=10,  # Should be capped at 10
-                safe="active",
+                safe="off",
             )

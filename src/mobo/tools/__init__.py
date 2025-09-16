@@ -6,7 +6,7 @@ external services, Discord features, and generate content.
 """
 
 # Import all tool modules to trigger registration
-from . import discord_context_tools  # noqa
+from . import discord_tools  # noqa
 from . import openai_tools  # noqa
 from . import giphy_tools  # noqa
 from . import web_search_tools  # noqa

@@ -11,7 +11,7 @@ import textwrap
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage
 
-from .state import BotState, log_workflow_step
+from .state import BotState
 from ..config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -26,12 +26,9 @@ async def message_generator_node(
     This node takes the tool results from the supervisor and crafts
     a natural, personality-driven response for the user.
     """
-    log_workflow_step(state, "message_generator")
+    logger.info("✒️ Creating personality-driven response")
 
     try:
-        logger.info("🎨 Generating final response with personality model...")
-
-        # Extract artifacts from ToolMessages before they get processed
         messages_in_state = state.get("messages", [])
         artifacts_found = []
         for msg in messages_in_state:
@@ -42,12 +39,9 @@ async def message_generator_node(
             ):
                 artifacts_found.append(msg.artifact)
 
-        # Store artifacts in state for Discord handler
         if artifacts_found:
             state["extracted_artifacts"] = artifacts_found
-            logger.info(f"🔧 Preserved {len(artifacts_found)} artifacts in state")
 
-        # Use already loaded context from the load_context node
         user_context = state.get("user_context", {})
 
         settings = get_settings()
@@ -55,7 +49,7 @@ async def message_generator_node(
 
         system_prompt = textwrap.dedent(
             f"""
-            You are generating the final response for a Discord bot. You have access to tool results - use them to craft an engaging, natural response.
+            You are generating the final response for a Discord bot.
 
             PERSONALITY:
             {personality}
@@ -65,8 +59,6 @@ async def message_generator_node(
 
             RESPONSE GUIDELINES:
             - Be true to your personality and respond naturally
-            - Use tool results to enhance your response, don't just repeat them
-            - For emoji tools: convert emoji names to actual emoji (thumbs_up → 👍, custom emoji → :name: format)
             - Show enthusiasm that matches your personality
             - Be conversational and engaging
             - Don't mention that you're using tools or processing results
@@ -84,10 +76,14 @@ async def message_generator_node(
         # Get current turn messages from workflow
         current_messages = state.get("messages", [])
 
+        logger.info(f"📝 Current message count: {len(current_messages)}")
+
         # Check if we only have tool messages (indicating ToolNode replaced messages)
         only_tool_messages = current_messages and all(
             getattr(msg, "type", None) == "tool" for msg in current_messages
         )
+
+        logger.info(f"🔍 Only tool messages: {only_tool_messages}")
 
         # Extract tool results and incorporate them into the system prompt
         tool_results = []
@@ -131,14 +127,13 @@ async def message_generator_node(
             content = " ".join(str(item) for item in content)
         state["final_response"] = str(content).strip() if content else ""
 
+        logger.info(f"📝 Final response: {state['final_response'][:50]}...")
+
         # Update metadata
         state["model_calls"] = state.get("model_calls", 0) + 1
-
-        logger.info(f"✅ Message generated ({len(response.content)} chars)")
 
         return state
 
     except Exception as e:
         logger.exception(f"❌ Message generation error: {e}")
-
         return state

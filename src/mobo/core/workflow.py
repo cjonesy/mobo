@@ -18,12 +18,17 @@ from langgraph.graph import StateGraph, END
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import (
+    SystemMessage,
+    HumanMessage,
+    BaseMessage,
+    AIMessage,
+    ToolMessage,
+)
 from langchain_core.runnables import RunnableConfig
 
 from .state import (
     BotState,
-    log_workflow_step,
     format_state_summary,
 )
 from .message_generator import message_generator_node
@@ -58,10 +63,9 @@ async def chatbot_node(state: BotState) -> BotState:
     - Uses ChatOpenAI with bind_tools
     - Returns messages that LangGraph automatically routes
     """
-    log_workflow_step(state, "chatbot")
+    logger.info("💼 Analyzing message for tool usage")
 
     try:
-        logger.info(f"🤖 Processing message: {state['user_message'][:100]}...")
 
         user_context = state.get("user_context", {})
 
@@ -82,10 +86,12 @@ async def chatbot_node(state: BotState) -> BotState:
             GUIDELINES:
             - Stay true to your personality when choosing tools
             - Use tools when they would make the response more engaging or helpful in-character
-            - Don't use tools just because you can - only when they add genuine value for your personality
             - Consider what tools would best express your personality in this situation
+            - Be creative! Feel free to use tools in unexpected ways!
 
-            You are choosing tools for the response. The message generator will create the final response with your personality.
+            You are choosing tools for the response.
+
+            The message generator will create the final response with your personality.
         """
         ).strip()
 
@@ -98,32 +104,50 @@ async def chatbot_node(state: BotState) -> BotState:
 
         tools = get_all_tools()
         if tools:
+            tool_names = [tool.name for tool in tools]
+            logger.info(
+                f"💼 Found {len(tools)} tools available", extra={"tools": tool_names}
+            )
             llm_with_tools = llm.bind_tools(tools)
         else:
+            logger.info("💼 No tools available")
             llm_with_tools = llm
 
-        # Build messages for this turn (just system + user message)
-        # LangGraph will manage conversation history via checkpointer
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=state["user_message"]),
-        ]
+        current_user_message = HumanMessage(content=state["user_message"])
 
-        response = await llm_with_tools.ainvoke(messages)
+        conversation = [SystemMessage(content=system_prompt), current_user_message]
 
-        # Store current turn's messages for LangGraph routing
-        # Include the user message and AI response for proper tool call flow
-        state["messages"] = messages + [response]
+        response = await llm_with_tools.ainvoke(conversation)
 
-        # Update metadata
-        state["model_calls"] = state.get("model_calls", 0) + 1
+        # Log tool call decision
+        if hasattr(response, "tool_calls") and response.tool_calls:
+            tool_names = [
+                tool_call.get("name", "unknown") for tool_call in response.tool_calls
+            ]
+            logger.info(
+                f"💼 Chose {len(response.tool_calls)} tools",
+                extra={"tools": tool_names},
+            )
+            for i, tool_call in enumerate(response.tool_calls):
+                tool_name = tool_call.get("name", "unknown")
+                tool_args = tool_call.get("args", {})
+                logger.debug(f"💼 Tool {i+1} - {tool_name} with args: {tool_args}")
+        else:
+            logger.info("💼 No tools needed, proceeding to response")
 
-        logger.info("✅ Chatbot processing completed")
-        return state
+        return {
+            **state,
+            "messages": [current_user_message, response],
+            "model_calls": state.get("model_calls", 0) + 1,
+        }
 
     except Exception as e:
-        logger.exception(f"❌ Chatbot error: {e}")
-        return state
+        logger.exception(f"❌ Chatbot node error: {e}")
+        return {
+            **state,
+            "messages": state.get("messages", [])
+            + [HumanMessage(content=state["user_message"])],
+        }
 
 
 def should_continue(state: BotState) -> str:
@@ -140,7 +164,6 @@ def should_continue(state: BotState) -> str:
     last_message = messages[-1]
 
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-        logger.info(f"🔧 {len(last_message.tool_calls)} tool calls detected")
         return "tools"
     else:
         return "message_generator"
@@ -152,21 +175,20 @@ async def load_context_node_with_store(
     """
     Load conversation context using PostgresStore.
     """
+    logger.info("📑 Loading user and conversation context")
+
     try:
         user_id = state.get("user_id", "")
         channel_id = state.get("channel_id", "")
 
-        # Get user profile
         session_maker = get_session_maker()
         user_service = UserService()
         async with session_maker() as session:
             user_context = await user_service.get_user_context_for_bot(session, user_id)
 
-        # Get recent conversation context using PostgresStore directly
         namespace = ("conversations", f"channel_{channel_id}")
         recent_messages = await store.asearch(namespace, limit=10)  # type: ignore
 
-        # Format conversation context
         conversation_context = []
         for item in recent_messages:
             msg = item.value
@@ -178,19 +200,15 @@ async def load_context_node_with_store(
                 }
             )
 
-        # Sort by timestamp (most recent last)
         conversation_context.sort(key=lambda x: x["timestamp"])
 
-        # Update state
-        state["user_context"] = user_context
+        logger.info(f"📑 Loaded {len(conversation_context)} messages from context")
 
-        logger.info(
-            f"✅ Loaded context: {len(conversation_context)} messages, user: {user_id}"
-        )
+        state["user_context"] = user_context
         return state
 
     except Exception as e:
-        logger.error(f"❌ Error loading context with PostgresStore: {e}")
+        logger.error(f"Error loading context: {e}")
         # Fallback to minimal context
         state["user_context"] = {"user_id": user_id, "response_tone": "neutral"}
         return state
@@ -203,6 +221,8 @@ async def save_conversation_node_with_store(
     """
     Save conversation using PostgresStore.
     """
+    logger.info("💾 Persisting conversation to database")
+
     try:
         user_id = state.get("user_id", "")
         channel_id = state.get("channel_id", "")
@@ -239,13 +259,10 @@ async def save_conversation_node_with_store(
                 },
             )
 
-        logger.info(
-            f"✅ Saved conversation to PostgresStore: {len(user_message or '')} + {len(final_response or '')} chars"
-        )
         return state
 
     except Exception as e:
-        logger.error(f"❌ Error saving conversation to PostgresStore: {e}")
+        logger.error(f"❌ Error saving conversation: {e}")
         return state
 
 
@@ -260,11 +277,9 @@ async def create_bot_workflow(checkpointer, store) -> CompiledStateGraph:
     Returns:
         Compiled LangGraph workflow with persistence
     """
-    logger.info("🏗️ Creating bot workflow...")
-
+    logger.info("⛓️ Creating bot workflow")
     workflow = StateGraph(BotState)
 
-    # Add tool-related nodes
     tools = get_all_tools()
     has_tools = bool(tools)
 
@@ -311,22 +326,6 @@ async def create_bot_workflow(checkpointer, store) -> CompiledStateGraph:
 
     # Compile workflow with provided checkpointer
     compiled_workflow = workflow.compile(checkpointer=checkpointer)
-
-    logger.info("✅ Bot workflow created successfully")
-
-    if has_tools:
-        logger.info(
-            "🛤️ Workflow path: load_context → chatbot (supervisor) → tools → message_generator → save_conversation → END"
-        )
-        logger.info(f"🛠️ {len(tools)} tools available")
-    else:
-        logger.info(
-            "🛤️ Workflow path: load_context → chatbot → message_generator → save_conversation → END"
-        )
-        logger.info("⚠️ No tools available")
-
-    logger.info("🚀 Using standard LangGraph patterns with built-in persistence")
-
     return compiled_workflow
 
 
@@ -335,8 +334,8 @@ async def create_workflow_for_message(
     user_message: str,
     user_id: str,
     channel_id: str,
-    discord_client = None,
-    discord_message = None,
+    discord_client=None,
+    discord_message=None,
 ) -> BotState:
     """
     Create a workflow for a single message and execute it.
@@ -355,14 +354,11 @@ async def create_workflow_for_message(
     Returns:
         Final state after workflow execution
     """
-    # Create fresh checkpointer and store for this message
-    # Note: PostgresStore is a regular context manager, AsyncPostgresSaver is async
+    logger.info("✉️ Creating workflow for message")
     with PostgresStore.from_conn_string(database_url) as store:
         async with AsyncPostgresSaver.from_conn_string(database_url) as checkpointer:
-            # Create workflow with these instances
             workflow = await create_bot_workflow(checkpointer, store)
 
-            # Execute workflow
             return await execute_workflow(
                 workflow=workflow,
                 user_message=user_message,
@@ -378,8 +374,8 @@ async def execute_workflow(
     user_message: str,
     user_id: str,
     channel_id: str,
-    discord_client = None,
-    discord_message = None,
+    discord_client=None,
+    discord_message=None,
 ) -> BotState:
     """
     Execute the workflow with thread-based conversation using LangGraph.
@@ -395,47 +391,64 @@ async def execute_workflow(
     Returns:
         Final state after workflow execution
     """
-    initial_state: BotState = {
-        "user_message": user_message,
-        "user_id": user_id,
-        "channel_id": channel_id,
-        "timestamp": datetime.now(UTC),
-        "user_context": {},
-        "messages": [],
-        "final_response": None,
-        "model_calls": 0,
-        "workflow_path": [],
-        "extracted_artifacts": [],
-    }
-
+    logger.info("📨 Executing workflow")
     thread_id = f"discord_channel_{channel_id}"
     config = get_config_for_thread(thread_id)
 
-    # Add Discord context to config for tools
     if discord_client or discord_message:
         config["configurable"]["discord_client"] = discord_client
         config["configurable"]["discord_message"] = discord_message
 
-    logger.info(
-        f"🚀 Executing workflow for message: {user_message[:50]}... (thread: {thread_id})"
-    )
+    current_state: BotState
+    try:
+        existing_state = await workflow.aget_state(config)
+        if existing_state.values:
+            current_state = cast(BotState, existing_state.values.copy())
+            current_state.update(
+                {
+                    "user_message": user_message,
+                    "user_id": user_id,
+                    "channel_id": channel_id,
+                    "timestamp": datetime.now(UTC),
+                }
+            )
+        else:
+            current_state = {
+                "user_message": user_message,
+                "user_id": user_id,
+                "channel_id": channel_id,
+                "timestamp": datetime.now(UTC),
+                "user_context": {},
+                "messages": [],
+                "final_response": None,
+                "model_calls": 0,
+                "extracted_artifacts": [],
+            }
+    except Exception as e:
+        logger.debug(f"❌ Could not get existing state: {e}, creating new")
+        current_state = {
+            "user_message": user_message,
+            "user_id": user_id,
+            "channel_id": channel_id,
+            "timestamp": datetime.now(UTC),
+            "user_context": {},
+            "messages": [],
+            "final_response": None,
+            "model_calls": 0,
+            "extracted_artifacts": [],
+        }
 
     try:
-        final_state = await workflow.ainvoke(initial_state, config=config)
-
-        # Update total execution time
-        logger.info("✅ Workflow completed")
-        logger.info(f"🛤️ Path taken: {' → '.join(final_state['workflow_path'])}")
-
+        final_state = await workflow.ainvoke(current_state, config=config)
         return cast(BotState, final_state)
 
     except Exception as e:
         logger.exception(f"❌ Workflow execution failed: {e}")
 
-        error_state = initial_state.copy()
+        error_state = current_state.copy()
         error_state["final_response"] = None
 
-        return error_state
+        return cast(BotState, error_state)
 
 
 def validate_workflow_state(state: BotState) -> list[str]:
@@ -463,10 +476,6 @@ def validate_workflow_state(state: BotState) -> list[str]:
         if not state.get(field):
             errors.append(f"Missing required field: {field}")
 
-    # Check execution path
-    if not state.get("workflow_path"):
-        errors.append("No workflow path recorded")
-
     return errors
 
 
@@ -491,7 +500,6 @@ def format_workflow_summary(state: BotState) -> str:
         f"   💭 Response: {response[:100]}{'...' if len(response) > 100 else ''}",
         "",
         f"🔄 Model Calls: {state['model_calls']}",
-        f"🛤️ Workflow Path: {' → '.join(state['workflow_path'])}",
     ]
 
     # Add validation results

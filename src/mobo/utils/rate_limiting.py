@@ -144,7 +144,8 @@ def rate_limited(
                 logger.warning(f"Rate limit exceeded: {e}")
 
                 # Return a user-friendly error message
-                reset_delta = e.reset_time - datetime.now(UTC)
+                now = datetime.now(UTC) if e.reset_time.tzinfo else datetime.now()
+                reset_delta = e.reset_time - now
                 reset_seconds = max(0, int(reset_delta.total_seconds()))
 
                 if reset_seconds < 60:

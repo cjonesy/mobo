@@ -35,6 +35,7 @@ class BotClient(discord.Client):
         intents.message_content = True
         intents.guilds = True
         intents.members = True
+        intents.presences = True
 
         super().__init__(intents=intents)
 
@@ -255,150 +256,51 @@ class BotClient(discord.Client):
             logger.error(f"❌ Failed to create poll: {e}")
             raise ValueError(f"Failed to create poll: {e}")
 
-    async def get_channel_users(self, channel, client_user=None) -> dict:
+    async def send_sticker_to_channel(
+        self, channel: discord.TextChannel, sticker_name: str, message_content: str = ""
+    ):
         """
-        Get list of users in any Discord channel (guild channel, DM, or group DM).
+        Send a sticker to a Discord channel.
 
         Args:
-            channel: The Discord channel (TextChannel, DMChannel, or GroupChannel)
-            client_user: The bot's user object (for DM contexts)
+            channel: The Discord channel to send sticker to
+            sticker_name: Name of the sticker to send (guild stickers only)
+            message_content: Optional message text to include with the sticker
 
         Returns:
-            Dictionary with user lists and location info
+            Discord message object that was sent
         """
         try:
-            users = []
-            location = ""
+            sticker = None
 
+            # First try to find the sticker in the guild (custom stickers)
             if hasattr(channel, "guild") and channel.guild:
-                # Guild channel - get all members who can see this channel
-                for member in channel.guild.members:
-                    if channel.permissions_for(member).view_channel:
-                        users.append(
-                            {
-                                "id": str(member.id),
-                                "name": member.display_name,
-                                "username": member.name,
-                                "bot": member.bot,
-                                "status": str(member.status)
-                                if hasattr(member, "status")
-                                else "unknown",
-                            }
-                        )
-                location = f"server '{channel.guild.name}'"
-            else:
-                # DM or group DM - get participants
-                if hasattr(channel, "recipients"):
-                    # recipients is a list of User objects
-                    for recipient in channel.recipients:
-                        users.append(
-                            {
-                                "id": str(recipient.id),
-                                "name": getattr(
-                                    recipient, "display_name", recipient.name
-                                ),
-                                "username": recipient.name,
-                                "bot": recipient.bot,
-                                "status": "unknown",
-                            }
-                        )
-                    if client_user:
-                        users.append(
-                            {
-                                "id": str(client_user.id),
-                                "name": getattr(
-                                    client_user, "display_name", client_user.name
-                                ),
-                                "username": client_user.name,
-                                "bot": client_user.bot,
-                                "status": "unknown",
-                            }
-                        )
-                else:
-                    # Fallback for other DM types
-                    if hasattr(channel, "recipient"):
-                        users.append(
-                            {
-                                "id": str(channel.recipient.id),
-                                "name": getattr(
-                                    channel.recipient,
-                                    "display_name",
-                                    channel.recipient.name,
-                                ),
-                                "username": channel.recipient.name,
-                                "bot": channel.recipient.bot,
-                                "status": "unknown",
-                            }
-                        )
-                    if client_user:
-                        users.append(
-                            {
-                                "id": str(client_user.id),
-                                "name": getattr(
-                                    client_user, "display_name", client_user.name
-                                ),
-                                "username": client_user.name,
-                                "bot": client_user.bot,
-                                "status": "unknown",
-                            }
-                        )
-                location = "this chat"
+                sticker = discord.utils.get(channel.guild.stickers, name=sticker_name)
 
-            # Separate humans and bots, sort by name
-            humans = []
-            bots = []
+            # If not found, try to find it by ID in guild stickers
+            if not sticker:
+                try:
+                    sticker_id = int(sticker_name)
+                    if hasattr(channel, "guild") and channel.guild:
+                        sticker = discord.utils.get(
+                            channel.guild.stickers, id=sticker_id
+                        )
+                except ValueError:
+                    pass
 
-            for user in users:
-                if user["bot"]:
-                    bots.append(user)
-                else:
-                    humans.append(user)
+            if not sticker:
+                raise ValueError(f"Sticker '{sticker_name}' not found in this server")
 
-            humans.sort(key=lambda x: x["name"].lower())
-            bots.sort(key=lambda x: x["name"].lower())
+            # Send the sticker
+            sent_message = await channel.send(
+                content=message_content or None, stickers=[sticker]
+            )
+            logger.info(f"✅ Sent sticker {sticker_name} to channel")
+            return sent_message
 
-            result = {
-                "humans": humans,
-                "bots": bots,
-                "location": location,
-                "total": len(users),
-            }
-
-            logger.info(f"✅ Retrieved {len(users)} users from {location}")
-            return result
         except Exception as e:
-            logger.error(f"❌ Failed to get channel users: {e}")
-            raise ValueError(f"Failed to get channel users: {e}")
-
-    async def get_guild_emojis(self, guild: discord.Guild) -> list[dict]:
-        """
-        Get list of custom emojis in a Discord guild.
-
-        Args:
-            guild: The Discord guild
-
-        Returns:
-            List of emoji info dictionaries
-        """
-        try:
-            emojis = []
-
-            for emoji in guild.emojis:
-                emojis.append(
-                    {
-                        "name": emoji.name,
-                        "id": str(emoji.id),
-                        "animated": emoji.animated,
-                        "available": emoji.available,
-                        "url": str(emoji.url),
-                    }
-                )
-
-            logger.info(f"✅ Retrieved {len(emojis)} custom emojis")
-            return emojis
-        except Exception as e:
-            logger.error(f"❌ Failed to get guild emojis: {e}")
-            raise ValueError(f"Failed to get guild emojis: {e}")
+            logger.error(f"❌ Failed to send sticker {sticker_name}: {e}")
+            raise ValueError(f"Failed to send sticker: {e}")
 
     async def get_user_profile(self, user_id: str, guild=None) -> dict:
         """
@@ -445,29 +347,32 @@ class BotClient(discord.Client):
 
             # Build profile information
             profile = {
+                "name": user.name,
                 "id": str(user.id),
-                "username": user.name,
                 "display_name": user.display_name,
+                "global_name": user.global_name,
+                "mention": user.mention,
                 "bot": user.bot,
-                "avatar_url": str(user.avatar.url)
-                if user.avatar
-                else "Default Discord avatar",
-                "created_at": user.created_at.strftime("%Y-%m-%d %H:%M:%S UTC")
-                if user.created_at
-                else None,
+                "avatar_url": str(user.avatar.url) if user.avatar else None,
+                "created_at": (
+                    user.created_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+                    if user.created_at
+                    else None
+                ),
             }
 
             # Add guild-specific info if member
             if member and guild:
                 profile.update(
                     {
-                        "guild_name": guild.name,
-                        "joined_at": member.joined_at.strftime("%Y-%m-%d %H:%M:%S UTC")
-                        if member.joined_at
-                        else None,
-                        "status": str(member.status)
-                        if hasattr(member, "status")
-                        else None,
+                        "joined_at": (
+                            member.joined_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+                            if member.joined_at
+                            else None
+                        ),
+                        "status": (
+                            str(member.status) if hasattr(member, "status") else None
+                        ),
                         "nickname": member.nick,
                     }
                 )

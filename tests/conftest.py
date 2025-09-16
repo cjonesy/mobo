@@ -156,7 +156,6 @@ def sample_bot_state():
         "tool_errors": {},
         "generated_files": [],
         "final_response": "",
-        "workflow_path": [],
         "model_calls": 0,
     }
 

@@ -10,8 +10,6 @@ import logging.handlers
 import sys
 from pathlib import Path
 from typing import Optional, Dict, Any
-import json
-from datetime import datetime, UTC
 
 
 class ColoredFormatter(logging.Formatter):
@@ -47,60 +45,6 @@ class ColoredFormatter(logging.Formatter):
         return message
 
 
-class JSONFormatter(logging.Formatter):
-    """
-    JSON formatter for structured logging.
-
-    This is useful for production environments where logs are processed
-    by log aggregation systems like ELK stack or CloudWatch.
-    """
-
-    def format(self, record):
-        """Format the log record as JSON."""
-        log_entry = {
-            "timestamp": datetime.now(UTC).isoformat(),
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-            "module": record.module,
-            "function": record.funcName,
-            "line": record.lineno,
-        }
-
-        # Add exception info if present
-        if record.exc_info:
-            log_entry["exception"] = self.formatException(record.exc_info)
-
-        # Add extra fields if present
-        for key, value in record.__dict__.items():
-            if key not in (
-                "name",
-                "msg",
-                "args",
-                "levelname",
-                "levelno",
-                "pathname",
-                "filename",
-                "module",
-                "exc_info",
-                "exc_text",
-                "stack_info",
-                "lineno",
-                "funcName",
-                "created",
-                "msecs",
-                "relativeCreated",
-                "thread",
-                "threadName",
-                "processName",
-                "process",
-                "message",
-            ):
-                log_entry[key] = value
-
-        return json.dumps(log_entry)
-
-
 class BotLoggerAdapter(logging.LoggerAdapter):
     """
     Custom logger adapter that adds bot-specific context to log messages.
@@ -128,7 +72,6 @@ def setup_logging(
     level: str = "INFO",
     log_format: str = "colored",
     log_file: Optional[str] = None,
-    json_logs: bool = False,
     max_file_size: int = 10 * 1024 * 1024,  # 10MB
     backup_count: int = 5,
 ) -> None:
@@ -139,7 +82,6 @@ def setup_logging(
         level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         log_format: Format type ("colored", "simple", "detailed")
         log_file: Optional file path for file logging
-        json_logs: Whether to use JSON formatting for structured logs
         max_file_size: Maximum log file size before rotation
         backup_count: Number of backup log files to keep
     """
@@ -159,23 +101,20 @@ def setup_logging(
     console_handler.setLevel(numeric_level)
 
     console_formatter: logging.Formatter
-    if json_logs:
-        console_formatter = JSONFormatter()
-    else:
-        if log_format == "colored":
-            console_formatter = ColoredFormatter(
-                "%(asctime)s - %(name)-30s - %(levelname)-8s - %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
-        elif log_format == "detailed":
-            console_formatter = logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(funcName)s() - %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
-        else:  # simple
-            console_formatter = logging.Formatter(
-                "%(asctime)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
-            )
+    if log_format == "colored":
+        console_formatter = ColoredFormatter(
+            "%(asctime)s - %(name)-30s - %(levelname)-8s - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    elif log_format == "detailed":
+        console_formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(funcName)s() - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    else:  # simple
+        console_formatter = logging.Formatter(
+            "%(asctime)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
+        )
 
     console_handler.setFormatter(console_formatter)
     root_logger.addHandler(console_handler)
@@ -190,14 +129,10 @@ def setup_logging(
         )
         file_handler.setLevel(numeric_level)
 
-        file_formatter: logging.Formatter
-        if json_logs:
-            file_formatter = JSONFormatter()
-        else:
-            file_formatter = logging.Formatter(
-                "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s",
-                datefmt="%Y-%m-%d %H:%M:%S",
-            )
+        file_formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
 
         file_handler.setFormatter(file_formatter)
         root_logger.addHandler(file_handler)
@@ -232,6 +167,16 @@ def _configure_external_loggers():
     # SQLAlchemy
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
+
+    # LangGraph logging - keep at WARNING since built-in logging is minimal
+    logging.getLogger("langgraph").setLevel(logging.WARNING)
+    logging.getLogger("langgraph.graph").setLevel(logging.WARNING)
+    logging.getLogger("langgraph.pregel").setLevel(logging.WARNING)
+    logging.getLogger("langgraph.prebuilt").setLevel(logging.WARNING)
+
+    # LangChain core logging
+    logging.getLogger("langchain_core.callbacks").setLevel(logging.WARNING)
+    logging.getLogger("langchain_core.tracers").setLevel(logging.WARNING)
 
 
 def get_logger(name: str, **context) -> BotLoggerAdapter:
@@ -445,8 +390,8 @@ def configure_development_logging():
 
 
 def configure_production_logging(log_file: str = "bot.log"):
-    """Quick setup for production with file logging and JSON format."""
-    setup_logging(level="INFO", log_format="simple", log_file=log_file, json_logs=True)
+    """Quick setup for production with file logging."""
+    setup_logging(level="INFO", log_format="simple", log_file=log_file)
 
 
 def get_log_stats() -> Dict[str, Any]:

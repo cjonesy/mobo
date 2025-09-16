@@ -5,6 +5,7 @@ This module contains tools that use the Google Custom Search API to search
 the web and return relevant results.
 """
 
+import json
 import logging
 from typing import Optional
 from googleapiclient.discovery import build  # type: ignore[import-untyped]
@@ -41,7 +42,7 @@ async def _search_web_impl(
     query: str,
     num_results: int = 5,
     search_type: Optional[str] = None,
-    safe_search: str = "active",
+    safe_search: str = "off",
 ) -> str:
     """
     Internal implementation of web search.
@@ -53,7 +54,7 @@ async def _search_web_impl(
         safe_search: Safe search setting ("active", "moderate", "off")
 
     Returns:
-        Formatted string containing search results with titles, URLs, and snippets
+        JSON string containing search results data
     """
     try:
         api_key = get_google_custom_search_api_key()
@@ -82,50 +83,69 @@ async def _search_web_impl(
         # Check if we got results
         if "items" not in result:
             logger.info(f"No search results found for '{query}'")
-            return (
-                f"No search results found for '{query}'. Try a different search term."
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": f"No search results found for '{query}'. Try a different search term.",
+                    "query": query,
+                    "results": [],
+                }
             )
 
-        # Format the results
-        formatted_results = []
-        formatted_results.append(f"Search results for '{query}':\n")
-
-        for i, item in enumerate(result["items"], 1):
-            title = item.get("title", "No title")
-            link = item.get("link", "")
-            snippet = item.get("snippet", "No description available")
-
-            formatted_results.append(f"{i}. **{title}**")
-            formatted_results.append(f"   {link}")
-            formatted_results.append(f"   {snippet}")
-            formatted_results.append("")  # Empty line for spacing
+        # Extract search results
+        search_results = []
+        for item in result["items"]:
+            search_results.append(
+                {
+                    "title": item.get("title", "No title"),
+                    "link": item.get("link", ""),
+                    "snippet": item.get("snippet", "No description available"),
+                    "display_link": item.get("displayLink", ""),
+                }
+            )
 
         # Add search metadata
         search_info = result.get("searchInformation", {})
-        total_results = search_info.get("totalResults", "unknown")
-        search_time = search_info.get("searchTime", "unknown")
 
-        formatted_results.append(
-            f"Found {total_results} results in {search_time} seconds"
-        )
-
-        result_text = "\n".join(formatted_results)
         logger.info(f"✅ Web search completed: {len(result['items'])} results")
 
-        return result_text
+        return json.dumps(
+            {
+                "success": True,
+                "query": query,
+                "results": search_results,
+                "total_results": search_info.get("totalResults", "unknown"),
+                "search_time": search_info.get("searchTime", "unknown"),
+                "result_count": len(search_results),
+            }
+        )
 
     except HttpError as e:
         error_msg = f"Google API error: {e.status_code} - {e.error_details}"
         logger.error(f"❌ Web search failed: {error_msg}")
-        return f"Search failed due to API error: {error_msg}"
+        return json.dumps(
+            {
+                "success": False,
+                "error": f"Search failed due to API error: {error_msg}",
+                "query": query,
+            }
+        )
 
     except ValueError as e:
         logger.error(f"❌ Configuration error: {e}")
-        return f"Search unavailable: {str(e)}"
+        return json.dumps(
+            {"success": False, "error": f"Search unavailable: {str(e)}", "query": query}
+        )
 
     except Exception as e:
         logger.error(f"❌ Unexpected error during web search: {e}")
-        return f"Search failed due to unexpected error: {str(e)}"
+        return json.dumps(
+            {
+                "success": False,
+                "error": f"Search failed due to unexpected error: {str(e)}",
+                "query": query,
+            }
+        )
 
 
 @registered_tool()
@@ -137,10 +157,13 @@ async def search_web(
     safe_search: str = "active",
 ) -> str:
     """
-    Search the web using Google Custom Search API and return formatted results.
+    Searches the web using Google Custom Search API and returns structured results.
 
-    Use this tool when you need to find current information about topics, news,
-    or anything that requires up-to-date web search results.
+    Provides access to current information, news, and web content through Google's
+    search infrastructure with customizable parameters.
+
+    Examples: Finding recent news, researching topics, getting current information,
+    fact-checking, discovering relevant websites, finding specific resources.
 
     Args:
         query: Search query string
@@ -149,20 +172,56 @@ async def search_web(
         safe_search: Safe search setting ("active", "moderate", "off")
 
     Returns:
-        Formatted string containing search results with titles, URLs, and snippets
+        JSON string with structure:
+        {
+            "success": bool,           # True if search completed successfully
+            "query": str,              # The search query that was executed
+            "results": [               # Array of search results
+                {
+                    "title": str,         # Page title
+                    "link": str,          # URL to the page
+                    "snippet": str,       # Brief description/preview text
+                    "display_link": str   # Formatted display URL
+                }
+            ],
+            "total_results": str,      # Total results available (from Google)
+            "search_time": str,        # Time taken to perform search
+            "result_count": int        # Number of results returned
+        }
+        On error:
+        {
+            "success": false,
+            "error": str,              # Description of what went wrong
+            "query": str               # The search query that failed
+        }
     """
+    logger.info(
+        f"⚒️ Calling search_web",
+        extra={
+            "query": query,
+            "num_results": num_results,
+            "search_type": search_type,
+            "safe_search": safe_search,
+        },
+    )
     try:
-        logger.info(f"🔍 Web search called with query: {query}")
         result = await _search_web_impl(query, num_results, search_type, safe_search)
         logger.info(f"🔍 Web search result length: {len(result)}")
         return result
     except ValueError as e:
-        # Configuration errors
         logger.error(f"❌ Web search configuration error: {e}")
-        return f"❌ Web search unavailable: {str(e)}. Please configure GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_CSE_ID environment variables."
+        return json.dumps(
+            {
+                "success": False,
+                "error": f"Web search unavailable: {str(e)}. Please configure GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_CSE_ID environment variables.",
+                "query": query,
+            }
+        )
     except Exception as e:
         logger.error(f"❌ Web search error: {e}")
-        return f"❌ Web search failed: {str(e)}"
+        return json.dumps(
+            {"success": False, "error": f"Web search failed: {str(e)}", "query": query}
+        )
 
 
 async def _search_images_impl(
@@ -183,7 +242,7 @@ async def _search_images_impl(
         safe_search: Safe search setting ("active", "moderate", "off")
 
     Returns:
-        Formatted string containing image search results with titles and URLs
+        JSON string containing image search results data
     """
     try:
         api_key = get_google_custom_search_api_key()
@@ -215,45 +274,83 @@ async def _search_images_impl(
         # Check if we got results
         if "items" not in result:
             logger.info(f"No image results found for '{query}'")
-            return f"No image results found for '{query}'. Try a different search term."
+            return json.dumps(
+                {
+                    "success": False,
+                    "error": f"No image results found for '{query}'. Try a different search term.",
+                    "query": query,
+                    "results": [],
+                }
+            )
 
-        # Format the results
-        formatted_results = []
-        formatted_results.append(f"Image search results for '{query}':\n")
-
-        for i, item in enumerate(result["items"], 1):
-            title = item.get("title", "No title")
-            link = item.get("link", "")
-            display_link = item.get("displayLink", "")
-
-            formatted_results.append(f"{i}. **{title}**")
-            formatted_results.append(f"   Image URL: {link}")
-            formatted_results.append(f"   From: {display_link}")
-            formatted_results.append("")  # Empty line for spacing
+        # Extract image results
+        image_results = []
+        for item in result["items"]:
+            image_results.append(
+                {
+                    "title": item.get("title", "No title"),
+                    "link": item.get("link", ""),
+                    "display_link": item.get("displayLink", ""),
+                    "image": {
+                        "context_link": item.get("image", {}).get("contextLink", ""),
+                        "height": item.get("image", {}).get("height"),
+                        "width": item.get("image", {}).get("width"),
+                        "byte_size": item.get("image", {}).get("byteSize"),
+                    },
+                }
+            )
 
         # Add search metadata
         search_info = result.get("searchInformation", {})
-        total_results = search_info.get("totalResults", "unknown")
 
-        formatted_results.append(f"Found {total_results} total image results")
-
-        result_text = "\n".join(formatted_results)
         logger.info(f"✅ Image search completed: {len(result['items'])} results")
 
-        return result_text
+        return json.dumps(
+            {
+                "success": True,
+                "query": query,
+                "results": image_results,
+                "total_results": search_info.get("totalResults", "unknown"),
+                "search_time": search_info.get("searchTime", "unknown"),
+                "result_count": len(image_results),
+                "filters": {
+                    "image_size": image_size,
+                    "image_type": image_type,
+                    "safe_search": safe_search,
+                },
+            }
+        )
 
     except HttpError as e:
         error_msg = f"Google API error: {e.status_code} - {e.error_details}"
         logger.error(f"❌ Image search failed: {error_msg}")
-        return f"Image search failed due to API error: {error_msg}"
+        return json.dumps(
+            {
+                "success": False,
+                "error": f"Image search failed due to API error: {error_msg}",
+                "query": query,
+            }
+        )
 
     except ValueError as e:
         logger.error(f"❌ Configuration error: {e}")
-        return f"Image search unavailable: {str(e)}"
+        return json.dumps(
+            {
+                "success": False,
+                "error": f"Image search unavailable: {str(e)}",
+                "query": query,
+            }
+        )
 
     except Exception as e:
         logger.error(f"❌ Unexpected error during image search: {e}")
-        return f"Image search failed due to unexpected error: {str(e)}"
+        return json.dumps(
+            {
+                "success": False,
+                "error": f"Image search failed due to unexpected error: {str(e)}",
+                "query": query,
+            }
+        )
 
 
 @registered_tool()
@@ -266,9 +363,13 @@ async def search_images(
     safe_search: str = "active",
 ) -> str:
     """
-    Search for images using Google Custom Search API.
+    Searches for images using Google Custom Search API with filtering options.
 
-    Use this tool when you need to find images related to a topic.
+    Finds images related to topics with customizable size, type, and safety filters
+    through Google's image search infrastructure.
+
+    Examples: Finding reference images, looking up visual examples, getting photos
+    for context, finding diagrams or illustrations, discovering visual content.
 
     Args:
         query: Image search query string
@@ -278,7 +379,38 @@ async def search_images(
         safe_search: Safe search setting ("active", "moderate", "off")
 
     Returns:
-        Formatted string containing image search results with titles and URLs
+        JSON string with structure:
+        {
+            "success": bool,           # True if image search completed successfully
+            "query": str,              # The search query that was executed
+            "results": [               # Array of image results
+                {
+                    "title": str,         # Image title/description
+                    "link": str,          # Direct URL to the image file
+                    "display_link": str,  # Domain where image was found
+                    "image": {
+                        "context_link": str,  # URL of page containing the image
+                        "height": int,        # Image height in pixels
+                        "width": int,         # Image width in pixels
+                        "byte_size": int      # Image file size in bytes
+                    }
+                }
+            ],
+            "total_results": str,      # Total results available (from Google)
+            "search_time": str,        # Time taken to perform search
+            "result_count": int,       # Number of results returned
+            "filters": {               # Applied search filters
+                "image_size": str,     # Size filter applied (or null)
+                "image_type": str,     # Type filter applied (or null)
+                "safe_search": str     # Safe search setting used
+            }
+        }
+        On error:
+        {
+            "success": false,
+            "error": str,              # Description of what went wrong
+            "query": str               # The search query that failed
+        }
     """
     return await _search_images_impl(
         query, num_results, image_size, image_type, safe_search

@@ -13,7 +13,6 @@ from mobo.core.workflow import (
 )
 from mobo.core.state import (
     BotState,
-    log_workflow_step,
     format_state_summary,
 )
 
@@ -24,16 +23,6 @@ class TestBotState:
     def test_initial_state(self, sample_bot_state):
         """Test initial bot state."""
         assert sample_bot_state["model_calls"] == 0
-
-    def test_log_workflow_step(self, sample_bot_state):
-        """Test logging workflow steps."""
-        initial_path = sample_bot_state["workflow_path"].copy()
-
-        log_workflow_step(sample_bot_state, "test_step")
-
-        assert len(sample_bot_state["workflow_path"]) == len(initial_path) + 1
-        assert sample_bot_state["workflow_path"][-1] == "test_step"
-
 
     def test_format_state_summary(self, sample_bot_state):
         """Test formatting state summary."""
@@ -78,7 +67,6 @@ class TestWorkflowValidation:
         sample_bot_state.update(
             {
                 "personality": "You are helpful",
-                "workflow_path": ["chatbot", "message_generator"],
                 "final_response": "Hello! How can I help you?",
             }
         )
@@ -109,10 +97,14 @@ class TestWorkflowExecution:
             "user_message": "Hello bot!",
             "user_id": "123456789",
             "channel_id": "987654321",
-            "workflow_path": ["chatbot", "message_generator"],
             "model_calls": 2,
         }
         mock_workflow.ainvoke.return_value = mock_final_state
+
+        # Mock aget_state to return empty state
+        mock_state = AsyncMock()
+        mock_state.values = None
+        mock_workflow.aget_state.return_value = mock_state
 
         final_state = await execute_workflow(
             workflow=mock_workflow,
@@ -122,7 +114,7 @@ class TestWorkflowExecution:
         )
 
         assert "user_message" in final_state
-        assert len(final_state["workflow_path"]) > 0
+        assert final_state["model_calls"] == 2
 
     @pytest.mark.asyncio
     async def test_execute_workflow_error(self, test_settings):
@@ -130,6 +122,11 @@ class TestWorkflowExecution:
         # Create a workflow that raises an exception
         mock_workflow = AsyncMock()
         mock_workflow.ainvoke.side_effect = Exception("Workflow error")
+
+        # Mock aget_state to return empty state
+        mock_state = AsyncMock()
+        mock_state.values = None
+        mock_workflow.aget_state.return_value = mock_state
 
         final_state = await execute_workflow(
             workflow=mock_workflow,
@@ -150,8 +147,8 @@ class TestWorkflowFormatting:
         sample_bot_state.update(
             {
                 "personality": "You are helpful",
-                "workflow_path": ["chatbot", "message_generator"],
                 "model_calls": 2,
+                "final_response": "Hello! How can I help you?",
             }
         )
 
@@ -160,4 +157,3 @@ class TestWorkflowFormatting:
         assert isinstance(summary, str)
         assert "Workflow Execution Summary" in summary
         assert "Model Calls: 2" in summary
-        assert "message_generator" in summary

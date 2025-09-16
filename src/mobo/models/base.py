@@ -13,7 +13,9 @@ from sqlalchemy import Column, DateTime
 class TimestampMixin:
     """Mixin for adding created_at and updated_at timestamps."""
 
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False)
+    created_at = Column(
+        DateTime, default=lambda: datetime.now(UTC).replace(tzinfo=None), nullable=False
+    )
     updated_at = Column(
         DateTime,
         default=lambda: datetime.now(UTC).replace(tzinfo=None),

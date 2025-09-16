@@ -33,12 +33,9 @@ class BotState(TypedDict):
     timestamp: datetime
     """When the message was sent"""
 
-    # Note: discord_context is managed via thread-local storage, not in state
-
     # =============================================================================
     # CONTEXT DATA (Loaded during context phase)
     # =============================================================================
-    # Note: personality is loaded from settings directly, not stored in state
 
     user_context: Dict[str, Any]
     """User context data (response_tone, likes, dislikes, etc.)"""
@@ -64,24 +61,8 @@ class BotState(TypedDict):
     model_calls: int
     """Number of LLM API calls made"""
 
-    workflow_path: List[str]
-    """List of nodes executed in the workflow"""
-
     extracted_artifacts: List[Dict[str, Any]]
     """Tool artifacts extracted for Discord upload (images, files, etc.)"""
-
-
-def log_workflow_step(state: BotState, node_name: str) -> None:
-    """
-    Log that a workflow node was executed.
-
-    Args:
-        state: The bot state to modify
-        node_name: Name of the workflow node
-    """
-    workflow_path = state.get("workflow_path", [])
-    workflow_path.append(node_name)
-    state["workflow_path"] = workflow_path
 
 
 def format_state_summary(state: BotState) -> str:
@@ -100,7 +81,6 @@ def format_state_summary(state: BotState) -> str:
         f"🤖 Chatbot: {len(state.get('messages', []))} messages generated",
         f"💬 Response: {state['final_response'][:100] if state['final_response'] else 'None'}{'...' if state['final_response'] and len(state['final_response']) > 100 else ''}",
         f"🔄 Model Calls: {state['model_calls']}",
-        f"🛤️  Path: {' → '.join(state['workflow_path'])}",
     ]
 
     return "\n".join(lines)

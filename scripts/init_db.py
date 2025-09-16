@@ -22,6 +22,9 @@ from langgraph.store.postgres import PostgresStore
 from mobo.utils.logging import setup_logging
 from mobo.db import get_engine, Base, get_session_maker
 
+# Import all models so they get registered with SQLAlchemy metadata
+import mobo.models  # This imports all the model classes
+
 logger = logging.getLogger(__name__)
 
 
@@ -94,6 +97,11 @@ async def main():
         print("\n🎉 Database initialization completed successfully!")
         print("You can now run the bot with: uv run bot")
 
+        # Clean up engine connections to avoid shutdown errors
+        from mobo.db.engine import _cleanup_engine
+        _cleanup_engine()
+        logger.info("✅ Database connections cleaned up")
+
     except KeyboardInterrupt:
         logger.info("🛑 Database initialization cancelled by user")
         sys.exit(1)
@@ -129,6 +137,11 @@ def reset_database():
             logger.info("🏗️ All tables recreated")
 
         logger.info("✅ Database reset completed")
+
+        # Clean up engine connections to avoid shutdown errors
+        from mobo.db.engine import _cleanup_engine
+        _cleanup_engine()
+        logger.info("✅ Database connections cleaned up")
 
     asyncio.run(_reset())
 

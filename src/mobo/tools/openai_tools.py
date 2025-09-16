@@ -30,7 +30,13 @@ def get_openai_client() -> AsyncOpenAI:
 @registered_tool(response_format="content_and_artifact")
 async def generate_image(prompt: str) -> Tuple[str, Dict]:
     """
-    Generate an image using DALL-E based on a text prompt.
+    Generates an image using DALL-E based on a text prompt.
+
+    Creates custom images from text descriptions using OpenAI's DALL-E model,
+    returning both content and artifact data for display.
+
+    Examples: Creating visual art, illustrating concepts, generating custom imagery,
+    making personalized pictures, visualizing ideas, creating decorative content.
 
     Args:
         prompt: Description of the image to generate
@@ -38,11 +44,10 @@ async def generate_image(prompt: str) -> Tuple[str, Dict]:
     Returns:
         Tuple of (content_text, image_artifact)
     """
+    logger.info(f"⚒️ Calling generate_image", extra={"prompt": prompt[:50]})
     try:
         client = get_openai_client()
         settings = get_settings()
-
-        logger.info(f"🎨 Generating image with prompt: {prompt[:50]}...")
 
         response = await client.images.generate(
             prompt=prompt,
@@ -53,7 +58,8 @@ async def generate_image(prompt: str) -> Tuple[str, Dict]:
         )
 
         if not response.data:
-            return ("Sorry, I couldn't generate an image. Please try again.", {})
+            raise ValueError("No image generated")
+
         image_url = response.data[0].url
         logger.info(f"✅ Image generated successfully: {image_url}")
 

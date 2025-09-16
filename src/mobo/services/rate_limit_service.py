@@ -169,7 +169,7 @@ class RateLimitService:
         # Ensure period_end is also timezone-naive
         if period_end.tzinfo is not None:
             period_end = period_end.replace(tzinfo=None)
-        
+
         if now >= period_end:
             return timedelta(0)
         return period_end - now

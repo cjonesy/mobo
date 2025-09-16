@@ -26,13 +26,15 @@ def get_giphy_api_key() -> str:
 
 
 @registered_tool(response_format="content_and_artifact")
-async def search_gif(
-    query: str, limit: int = 1
-) -> Tuple[str, Dict]:
+async def search_gif(query: str, limit: int = 1) -> Tuple[str, Dict]:
     """
-    Search for a GIF using the Giphy API and return it as an attachment.
+    Searches for a GIF using the Giphy API and returns it as an attachment.
 
-    Use this tool when you feel like a GIF would be a good addition to your conversation.
+    Finds animated GIFs from Giphy's database based on search terms,
+    returning both content and artifact data for display in Discord.
+
+    Examples: Adding humor to conversations, expressing emotions with animation,
+    reacting to funny moments, celebrating events, showing enthusiasm.
 
     Args:
         query: Search query for the GIF
@@ -41,10 +43,9 @@ async def search_gif(
     Returns:
         Tuple of (content_text, gif_artifact)
     """
+    logger.info(f"⚒️ Calling search_gif", extra={"query": query, "limit": limit})
     try:
         api_key = get_giphy_api_key()
-
-        logger.info(f"🔍 Searching for GIF: {query}")
 
         # Build Giphy API URL
         base_url = "https://api.giphy.com/v1/gifs/search"
@@ -52,7 +53,6 @@ async def search_gif(
             "api_key": api_key,
             "q": query,
             "limit": limit,
-            "rating": "pg-13",  # Keep it appropriate
             "lang": "en",
         }
 
@@ -65,8 +65,7 @@ async def search_gif(
 
         # Extract GIF data
         if not data.get("data"):
-            logger.info(f"No GIFs found for '{query}'")
-            return f"Sorry, I couldn't find any GIFs for '{query}'", {}
+            raise ValueError(f"No GIFs found for '{query}'")
 
         gif_data = data["data"][0]
         gif_url = gif_data["images"]["original"]["url"]
