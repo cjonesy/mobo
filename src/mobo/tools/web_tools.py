@@ -18,31 +18,14 @@ from googleapiclient.errors import HttpError  # type: ignore[import-untyped]
 from langchain_openai import ChatOpenAI
 
 from ..config import settings
-from langchain_core.tools import tool
-from .common import register_tool
+from .common import tool
 from .schemas import UrlSummaryResponse
 from ..utils.rate_limiting import rate_limited
 
 logger = logging.getLogger(__name__)
 
 
-def get_google_custom_search_api_key() -> str:
-    """Get Google Custom Search API key."""
-    if not settings.google_search.api_key:
-        raise ValueError("Google Custom Search API key not configured")
-
-    return settings.google_search.api_key.get_secret_value()
-
-
-def get_google_cse_id() -> str:
-    """Get Google Custom Search Engine ID."""
-    if not settings.google_search.cse_id:
-        raise ValueError("Google Custom Search Engine ID not configured")
-
-    return settings.google_search.cse_id
-
-
-async def _search_web_impl(
+async def _google_search_impl(
     query: str,
     num_results: int = 5,
     search_type: Optional[str] = None,
@@ -61,18 +44,19 @@ async def _search_web_impl(
         JSON string containing search results data
     """
     try:
-        api_key = get_google_custom_search_api_key()
-        cse_id = get_google_cse_id()
-
         logger.info(f"🔍 Searching web for: {query}")
 
         # Build the Google Custom Search API service
-        service = build("customsearch", "v1", developerKey=api_key)
+        service = build(
+            "customsearch",
+            "v1",
+            developerKey=settings.google_search.api_key.get_secret_value(),
+        )
 
         # Prepare search parameters
         search_params = {
             "q": query,
-            "cx": cse_id,
+            "cx": settings.google_search.cse_id,
             "num": min(num_results, 10),  # API limit is 10
             "safe": safe_search,
         }
@@ -209,7 +193,7 @@ async def search_web(
         },
     )
     try:
-        result = await _search_web_impl(query, num_results, search_type, safe_search)
+        result = await _google_search_impl(query, num_results, search_type, safe_search)
         logger.info(f"🔍 Web search result length: {len(result)}")
         return result
     except ValueError as e:
@@ -228,149 +212,15 @@ async def search_web(
         )
 
 
-async def _search_images_impl(
-    query: str,
-    num_results: int = 3,
-    image_size: Optional[str] = None,
-    image_type: Optional[str] = None,
-    safe_search: str = "active",
-) -> str:
-    """
-    Internal implementation of image search.
-
-    Args:
-        query: Image search query string
-        num_results: Number of image results to return (1-10, default 3)
-        image_size: Image size filter ("small", "medium", "large", "xlarge", "xxlarge", "huge")
-        image_type: Image type filter ("clipart", "face", "lineart", "stock", "photo", "animated")
-        safe_search: Safe search setting ("active", "moderate", "off")
-
-    Returns:
-        JSON string containing image search results data
-    """
-    try:
-        api_key = get_google_custom_search_api_key()
-        cse_id = get_google_cse_id()
-
-        logger.info(f"🖼️ Searching images for: {query}")
-
-        # Build the Google Custom Search API service
-        service = build("customsearch", "v1", developerKey=api_key)
-
-        # Prepare search parameters for image search
-        search_params = {
-            "q": query,
-            "cx": cse_id,
-            "num": min(num_results, 10),
-            "safe": safe_search,
-            "searchType": "image",
-        }
-
-        # Add optional image filters
-        if image_size:
-            search_params["imgSize"] = image_size
-        if image_type:
-            search_params["imgType"] = image_type
-
-        # Execute the search
-        result = service.cse().list(**search_params).execute()
-
-        # Check if we got results
-        if "items" not in result:
-            logger.info(f"No image results found for '{query}'")
-            return json.dumps(
-                {
-                    "success": False,
-                    "error": f"No image results found for '{query}'. Try a different search term.",
-                    "query": query,
-                    "results": [],
-                }
-            )
-
-        # Extract image results
-        image_results = []
-        for item in result["items"]:
-            image_results.append(
-                {
-                    "title": item.get("title", "No title"),
-                    "link": item.get("link", ""),
-                    "display_link": item.get("displayLink", ""),
-                    "image": {
-                        "context_link": item.get("image", {}).get("contextLink", ""),
-                        "height": item.get("image", {}).get("height"),
-                        "width": item.get("image", {}).get("width"),
-                        "byte_size": item.get("image", {}).get("byteSize"),
-                    },
-                }
-            )
-
-        # Add search metadata
-        search_info = result.get("searchInformation", {})
-
-        logger.info(f"✅ Image search completed: {len(result['items'])} results")
-
-        return json.dumps(
-            {
-                "success": True,
-                "query": query,
-                "results": image_results,
-                "total_results": search_info.get("totalResults", "unknown"),
-                "search_time": search_info.get("searchTime", "unknown"),
-                "result_count": len(image_results),
-                "filters": {
-                    "image_size": image_size,
-                    "image_type": image_type,
-                    "safe_search": safe_search,
-                },
-            }
-        )
-
-    except HttpError as e:
-        error_msg = f"Google API error: {e.status_code} - {e.error_details}"
-        logger.error(f"❌ Image search failed: {error_msg}")
-        return json.dumps(
-            {
-                "success": False,
-                "error": f"Image search failed due to API error: {error_msg}",
-                "query": query,
-            }
-        )
-
-    except ValueError as e:
-        logger.error(f"❌ Configuration error: {e}")
-        return json.dumps(
-            {
-                "success": False,
-                "error": f"Image search unavailable: {str(e)}",
-                "query": query,
-            }
-        )
-
-    except Exception as e:
-        logger.error(f"❌ Unexpected error during image search: {e}")
-        return json.dumps(
-            {
-                "success": False,
-                "error": f"Image search failed due to unexpected error: {str(e)}",
-                "query": query,
-            }
-        )
-
-
 @tool
 @rate_limited(resource="google-search", max_requests=100, period="day")
 async def search_images(
-    query: str,
-    num_results: int = 3,
-    image_size: Optional[str] = None,
-    image_type: Optional[str] = None,
-    safe_search: str = "active",
+    query: str, num_results: int = 3, safe_search: str = "active"
 ) -> str:
     """
-    Searches for images using Google Custom Search API with filtering options.
+    Searches for images using Google Custom Search API.
 
-    Finds images related to topics with customizable size, type, and safety filters
-    through Google's image search infrastructure.
+    Finds images related to topics through Google's image search infrastructure.
 
     Examples: Finding reference images, looking up visual examples, getting photos
     for context, finding diagrams or illustrations, discovering visual content.
@@ -378,47 +228,12 @@ async def search_images(
     Args:
         query: Image search query string
         num_results: Number of image results to return (1-10, default 3)
-        image_size: Image size filter ("small", "medium", "large", "xlarge", "xxlarge", "huge")
-        image_type: Image type filter ("clipart", "face", "lineart", "stock", "photo", "animated")
         safe_search: Safe search setting ("active", "moderate", "off")
 
     Returns:
-        JSON string with structure:
-        {
-            "success": bool,           # True if image search completed successfully
-            "query": str,              # The search query that was executed
-            "results": [               # Array of image results
-                {
-                    "title": str,         # Image title/description
-                    "link": str,          # Direct URL to the image file
-                    "display_link": str,  # Domain where image was found
-                    "image": {
-                        "context_link": str,  # URL of page containing the image
-                        "height": int,        # Image height in pixels
-                        "width": int,         # Image width in pixels
-                        "byte_size": int      # Image file size in bytes
-                    }
-                }
-            ],
-            "total_results": str,      # Total results available (from Google)
-            "search_time": str,        # Time taken to perform search
-            "result_count": int,       # Number of results returned
-            "filters": {               # Applied search filters
-                "image_size": str,     # Size filter applied (or null)
-                "image_type": str,     # Type filter applied (or null)
-                "safe_search": str     # Safe search setting used
-            }
-        }
-        On error:
-        {
-            "success": false,
-            "error": str,              # Description of what went wrong
-            "query": str               # The search query that failed
-        }
+        JSON string with search results (same structure as search_web)
     """
-    return await _search_images_impl(
-        query, num_results, image_size, image_type, safe_search
-    )
+    return await _google_search_impl(query, num_results, "image", safe_search)
 
 
 @tool
@@ -446,13 +261,15 @@ async def fetch_and_summarize_url(url: str) -> UrlSummaryResponse:
 
         # Fetch the webpage content
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+            async with session.get(
+                url, timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
                 if response.status != 200:
                     return UrlSummaryResponse(
                         success=False,
                         error=f"Failed to fetch URL: HTTP {response.status}",
                         url=url,
-                        domain=domain
+                        domain=domain,
                     )
 
                 content = await response.text()
@@ -468,28 +285,22 @@ async def fetch_and_summarize_url(url: str) -> UrlSummaryResponse:
 
         # Limit text content based on configuration
         if len(text_content) > settings.summarization_llm.max_chars:
-            text_content = text_content[:settings.summarization_llm.max_chars] + "..."
+            text_content = text_content[: settings.summarization_llm.max_chars] + "..."
 
         logger.info(f"📝 Extracted text content ({len(text_content)} characters)")
 
         # Use ChatOpenAI with OpenRouter to summarize the content
-        if not settings.openrouter.api_key:
-            return UrlSummaryResponse(
-                success=False,
-                error="OpenRouter API key not configured for content summarization",
-                url=url,
-                domain=domain
-            )
 
         llm = ChatOpenAI(
             api_key=settings.openrouter.api_key.get_secret_value(),
             base_url=settings.openrouter.base_url,
             model=settings.summarization_llm.model,
-            temperature=settings.summarization_llm.temperature
+            temperature=settings.summarization_llm.temperature,
         )
 
         # Create summarization prompt
-        prompt = dedent(f"""
+        prompt = dedent(
+            f"""
             Please analyze this web page content and provide:
             1. A clear, concise title if one isn't obvious
             2. A 2-3 sentence summary of the main content
@@ -502,13 +313,14 @@ async def fetch_and_summarize_url(url: str) -> UrlSummaryResponse:
             Title: [extracted or inferred title]
             Content Type: [type of content]
             Summary: [2-3 sentence summary]
-        """).strip()
+        """
+        ).strip()
 
         response = await llm.ainvoke(prompt)
         summary_text = response.content
 
         # Parse the response to extract components
-        lines = summary_text.split('\n')
+        lines = summary_text.split("\n")
         title = "Unknown Title"
         content_type = "webpage"
         summary = summary_text
@@ -529,7 +341,7 @@ async def fetch_and_summarize_url(url: str) -> UrlSummaryResponse:
             title=title,
             summary=summary,
             content_type=content_type,
-            domain=domain
+            domain=domain,
         )
 
     except aiohttp.ClientError as e:
@@ -538,7 +350,7 @@ async def fetch_and_summarize_url(url: str) -> UrlSummaryResponse:
             success=False,
             error=f"Network error: {str(e)}",
             url=url,
-            domain=parsed_url.netloc if 'parsed_url' in locals() else None
+            domain=parsed_url.netloc if "parsed_url" in locals() else None,
         )
 
     except Exception as e:
@@ -547,11 +359,5 @@ async def fetch_and_summarize_url(url: str) -> UrlSummaryResponse:
             success=False,
             error=str(e),
             url=url,
-            domain=parsed_url.netloc if 'parsed_url' in locals() else None
+            domain=parsed_url.netloc if "parsed_url" in locals() else None,
         )
-
-
-# Register tools with the global registry
-register_tool(search_web)
-register_tool(search_images)
-register_tool(fetch_and_summarize_url)

@@ -9,21 +9,9 @@ import logging
 from typing import Tuple, Dict
 from openai import AsyncOpenAI
 from ..config import settings
-from langchain_core.tools import tool
-from .common import register_tool
+from .common import tool
 
 logger = logging.getLogger(__name__)
-
-
-def get_openai_client() -> AsyncOpenAI:
-    """Get configured OpenAI client."""
-    if not settings.openai.api_key:
-        raise ValueError("OpenAI API key not configured")
-
-    return AsyncOpenAI(
-        api_key=settings.openai.api_key.get_secret_value(),
-        base_url="https://api.openai.com/v1",
-    )
 
 
 @tool
@@ -45,7 +33,11 @@ async def generate_image(prompt: str) -> Tuple[str, Dict]:
     """
     logger.info("⚒️ Calling generate_image", extra={"prompt": prompt[:50]})
     try:
-        client = get_openai_client()
+        client = AsyncOpenAI(
+            api_key=settings.openai.api_key.get_secret_value(),
+            base_url=settings.openai.base_url,
+        )
+
         response = await client.images.generate(
             prompt=prompt,
             n=1,
@@ -75,7 +67,3 @@ async def generate_image(prompt: str) -> Tuple[str, Dict]:
     except Exception as e:
         logger.error(f"❌ Image generation failed for prompt '{prompt[:50]}...': {e}")
         return "", {}
-
-
-# Register tool with the global registry
-register_tool(generate_image)

@@ -11,12 +11,11 @@ from textwrap import dedent
 from typing import List
 from urllib.parse import urlparse
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
-from .common import register_tool
+from .common import tool
 from .schemas import (
     EmojiListResponse,
     EmojiData,
@@ -28,7 +27,6 @@ from .schemas import (
     StickerListResponse,
     StickerData,
     AvatarUpdateResponse,
-    UrlSummaryResponse,
     ImageAnalysisResponse,
     ChannelListResponse,
     ChannelData,
@@ -566,18 +564,13 @@ async def generate_and_set_avatar(
 
         from ..config import settings
 
-        if not settings.openai.api_key:
-            return AvatarUpdateResponse(
-                success=False,
-                error="OpenAI API key not configured for image generation",
-            )
 
         # Generate image with DALL-E
         logger.info(f"🎨 Generating avatar image with prompt: {prompt}")
 
         openai_client = AsyncOpenAI(
             api_key=settings.openai.api_key.get_secret_value(),
-            base_url="https://api.openai.com/v1",
+            base_url=settings.openai.base_url,
         )
 
         image_response = await openai_client.images.generate(
@@ -721,12 +714,6 @@ async def analyze_message_image(
         # Use OpenAI vision via OpenRouter
         from ..config import settings
 
-        if not settings.openrouter.api_key:
-            return ImageAnalysisResponse(
-                success=False,
-                error="OpenRouter API key not configured for image analysis",
-                image_url=image_url,
-            )
 
         # Define structured response model inline
         class VisionAnalysis(BaseModel):
@@ -896,15 +883,3 @@ async def list_channels(config: RunnableConfig) -> ChannelListResponse:
         return ChannelListResponse(success=False, error=str(e))
 
 
-# Register all tools with the global registry
-register_tool(list_custom_emoji)
-register_tool(add_reaction)
-register_tool(create_poll)
-register_tool(set_activity)
-register_tool(list_chat_users)
-register_tool(list_stickers)
-register_tool(send_sticker)
-register_tool(get_user_profile)
-register_tool(generate_and_set_avatar)
-register_tool(analyze_message_image)
-register_tool(list_channels)

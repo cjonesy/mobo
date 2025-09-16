@@ -8,6 +8,7 @@ from typing import Literal, List, Any
 
 from pydantic import SecretStr, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from .utils.text_encoding import decode_base64_if_encoded
 
 
 class DiscordSettings(BaseSettings):
@@ -17,6 +18,24 @@ class DiscordSettings(BaseSettings):
         default=SecretStr(""),
         description="Discord bot token from Discord Developer Portal",
     )
+
+    @field_validator("token")
+    def validate_discord_token(cls, v):
+        """Ensure Discord token is set to a real value."""
+        token_value = v.get_secret_value() if isinstance(v, SecretStr) else str(v)
+
+        if not token_value or token_value.strip() == "":
+            raise ValueError(
+                "Discord bot token must be set. Please configure MOBO_DISCORD__TOKEN environment variable."
+            )
+
+        # Basic Discord token format validation (they start with a bot ID, then a dot, then the token)
+        if len(token_value) < 50:  # Discord tokens are typically much longer
+            raise ValueError(
+                "Discord bot token appears to be invalid (too short). Please check your token."
+            )
+
+        return v
 
 
 class OpenRouterSettings(BaseSettings):
@@ -29,6 +48,24 @@ class OpenRouterSettings(BaseSettings):
         default="https://openrouter.ai/api/v1",
         description="Base URL for OpenRouter API requests",
     )
+
+    @field_validator("api_key")
+    def validate_openrouter_api_key(cls, v):
+        """Ensure OpenRouter API key is set to a real value."""
+        api_key_value = v.get_secret_value() if isinstance(v, SecretStr) else str(v)
+
+        if not api_key_value or api_key_value.strip() == "":
+            raise ValueError(
+                "OpenRouter API key must be set. Please configure MOBO_OPENROUTER__API_KEY environment variable."
+            )
+
+        # Basic API key format validation - OpenRouter keys typically start with "sk-or-"
+        if len(api_key_value) < 20:  # API keys are typically much longer
+            raise ValueError(
+                "OpenRouter API key appears to be invalid (too short). Please check your key."
+            )
+
+        return v
 
 
 class SupervisorLLMSettings(BaseSettings):
@@ -148,6 +185,28 @@ class OpenAISettings(BaseSettings):
         default=SecretStr(""),
         description="OpenAI API key for DALL-E image generation and embeddings",
     )
+    base_url: str = Field(
+        default="https://api.openai.com/v1",
+        description="Base URL for OpenAI API requests",
+    )
+
+    @field_validator("api_key")
+    def validate_openai_api_key(cls, v):
+        """Ensure OpenAI API key is set to a real value."""
+        api_key_value = v.get_secret_value() if isinstance(v, SecretStr) else str(v)
+
+        if not api_key_value or api_key_value.strip() == "":
+            raise ValueError(
+                "OpenAI API key must be set. Please configure MOBO_OPENAI__API_KEY environment variable."
+            )
+
+        # Basic API key format validation - OpenAI keys typically start with "sk-"
+        if not api_key_value.startswith("sk-") or len(api_key_value) < 40:
+            raise ValueError(
+                "OpenAI API key appears to be invalid. Please check your key format and length."
+            )
+
+        return v
 
 
 class PersonalitySettings(BaseSettings):
@@ -160,10 +219,15 @@ class PersonalitySettings(BaseSettings):
 
     @field_validator("prompt")
     def decode_personality_prompt(cls, v):
-        """Auto-decode base64 if the prompt appears to be encoded."""
-        from .utils.text_encoding import decode_base64_if_encoded
+        """Auto-decode base64 if the prompt appears to be encoded and ensure it's not empty."""
+        decoded_prompt = decode_base64_if_encoded(v)
 
-        return decode_base64_if_encoded(v)
+        if not decoded_prompt or decoded_prompt.strip() == "":
+            raise ValueError(
+                "Personality prompt must be set. Please configure MOBO_PERSONALITY__PROMPT environment variable."
+            )
+
+        return decoded_prompt
 
 
 class ImageGenerationSettings(BaseSettings):
@@ -193,6 +257,24 @@ class GiphySettings(BaseSettings):
         default=SecretStr(""), description="Giphy API key for GIF search"
     )
 
+    @field_validator("api_key")
+    def validate_giphy_api_key(cls, v):
+        """Ensure Giphy API key is set to a real value."""
+        api_key_value = v.get_secret_value() if isinstance(v, SecretStr) else str(v)
+
+        if not api_key_value or api_key_value.strip() == "":
+            raise ValueError(
+                "Giphy API key must be set. Please configure MOBO_GIPHY__API_KEY environment variable."
+            )
+
+        # Basic API key format validation - Giphy keys are typically alphanumeric and 32 characters
+        if len(api_key_value) < 20:  # API keys are typically much longer
+            raise ValueError(
+                "Giphy API key appears to be invalid (too short). Please check your key."
+            )
+
+        return v
+
 
 class GoogleSearchSettings(BaseSettings):
     """Google Custom Search API configuration for web search."""
@@ -201,6 +283,40 @@ class GoogleSearchSettings(BaseSettings):
         default=SecretStr(""), description="Google Custom Search API key"
     )
     cse_id: str = Field(default="", description="Google Custom Search Engine ID")
+
+    @field_validator("api_key")
+    def validate_google_api_key(cls, v):
+        """Ensure Google API key is set to a real value."""
+        api_key_value = v.get_secret_value() if isinstance(v, SecretStr) else str(v)
+
+        if not api_key_value or api_key_value.strip() == "":
+            raise ValueError(
+                "Google Custom Search API key must be set. Please configure MOBO_GOOGLE_SEARCH__API_KEY environment variable."
+            )
+
+        # Basic API key format validation - Google API keys are typically 39 characters
+        if len(api_key_value) < 30:  # API keys are typically much longer
+            raise ValueError(
+                "Google Custom Search API key appears to be invalid (too short). Please check your key."
+            )
+
+        return v
+
+    @field_validator("cse_id")
+    def validate_google_cse_id(cls, v):
+        """Ensure Google Custom Search Engine ID is set to a real value."""
+        if not v or v.strip() == "":
+            raise ValueError(
+                "Google Custom Search Engine ID must be set. Please configure MOBO_GOOGLE_SEARCH__CSE_ID environment variable."
+            )
+
+        # Basic CSE ID format validation - Google CSE IDs are typically alphanumeric with colons
+        if len(v) < 10:  # CSE IDs are typically much longer
+            raise ValueError(
+                "Google Custom Search Engine ID appears to be invalid (too short). Please check your CSE ID."
+            )
+
+        return v
 
 
 class MemorySettings(BaseSettings):

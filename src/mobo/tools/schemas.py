@@ -159,3 +159,14 @@ class ChannelListResponse(ToolResponse):
     )
     total: int = Field(default=0, description="Total number of channels")
     by_type: dict = Field(default_factory=dict, description="Channel counts by type")
+
+
+class StickerCreationResponse(ToolResponse):
+    """Response for sticker creation and upload operations."""
+
+    sticker_name: Optional[str] = Field(default=None, description="Name of the created sticker")
+    sticker_id: Optional[str] = Field(default=None, description="Discord sticker ID")
+    image_url: Optional[str] = Field(default=None, description="URL of the generated image")
+    file_size: Optional[int] = Field(default=None, description="Final file size in bytes")
+    dimensions: Optional[str] = Field(default=None, description="Image dimensions (width x height)")
+    server_sticker_slots: Optional[dict] = Field(default_factory=dict, description="Server sticker slot usage")
