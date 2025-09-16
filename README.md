@@ -1,49 +1,57 @@
-# 🤖 Discord AI Bot (LangGraph + RAG)
+# 🤖 Mobo - Intelligent Discord AI Bot
 
-A Discord bot powered by LangGraph with intelligent RAG conversation memory,
-user profiles, and anti-bot loop protection.
+A sophisticated Discord bot powered by LangGraph with RAG memory, adaptive user learning, and comprehensive tool integration.
 
 ## 🚀 Features
 
-### ✅ **LangGraph Workflow**
+### ✅ **LangGraph Workflow Architecture**
 
-- **StateGraph-based agent** with nodes for context retrieval, LLM processing,
-  tool execution, and profile updates
-- **Conditional edges** for intelligent tool calling flow
-- **Async tool execution** with proper error handling
+- **Multi-node StateGraph** with load context → supervisor → tools → context learning → message generation
+- **Supervisor pattern** for intelligent tool selection and response orchestration
+- **Conditional routing** based on tool requirements and conversation flow
+- **Async execution** with proper error handling and state management
 
-### ✅ **RAG Memory System**
+### ✅ **Advanced RAG Memory System**
 
 - **PostgreSQL + pgvector** for semantic similarity search
-- **OpenAI embeddings** for message vectorization
-- **Context-aware responses** using similar past conversations
-- **Long-term memory** that persists across sessions
+- **OpenAI embeddings** (text-embedding-3-small) for message vectorization
+- **Hybrid context retrieval** combining recent + semantically relevant conversations
+- **Persistent conversation memory** across Discord sessions
+- **Configurable similarity thresholds** and context limits
 
-### ✅ **User Profile Tracking**
+### ✅ **Adaptive User Context Learning**
 
-- **Dynamic user profiles** with likes, dislikes, and interaction tone
-- **Personalized responses** based on user history
-- **Automatic profile updates** from conversation analysis
+- **Real-time interaction analysis** using LLM-powered conversation assessment
+- **Dynamic response tone adaptation** based on user communication patterns
+- **Automatic preference learning** (likes/dislikes from conversation context)
+- **Conservative learning approach** to prevent over-adjustments
+- **Bot-centric strategy** - learns how the bot should interact with each user
 
-### ✅ **Anti-Bot Loop Protection**
+### ✅ **Comprehensive Tool System**
 
-- **Configurable interaction limits** to prevent bot-to-bot loops
-- **Automatic reset** when humans join conversations
-- **Smart bot detection** and response throttling
+**Communication & Social:**
+- Emoji reactions and custom stickers
+- Discord polls for group decisions
+- Activity status management
+- User profile and member information
 
-### ✅ **Smart Message Triggering**
+**AI-Powered Features:**
+- Image analysis with OpenAI Vision
+- DALL-E avatar generation and customization
+- Web search with Google Custom Search
+- URL content fetching and summarization
 
-- Only responds when **@mentioned** or **replying to bot messages**
-- **Context-aware** message processing with personality preservation
-- **Typing indicators** during response generation
+**Server Management:**
+- Channel listing and information
+- Custom emoji and sticker discovery
+- User mention and interaction tools
 
-### ✅ **Tool System**
+### ✅ **Smart Discord Integration**
 
-- **Image generation** with DALL-E integration
-- **Nickname management** (self-changing capability)
-- **User mention** functionality
-- **Profile management** tools
-- **Extensible tool framework** for easy additions
+- **Mention-based triggering** (@bot or replies to bot messages)
+- **Typing indicators** during processing
+- **Rate limiting** with per-resource controls
+- **Structured Pydantic responses** for all tool outputs
 
 ## 🛠️ Tech Stack
 
@@ -100,29 +108,42 @@ cp .env.example .env
 
 Create a `.env` file with the following:
 
+**Note**: All environment variables now use the `MOBO_` prefix. Nested settings (Discord, OpenRouter) use double underscores (`__`).
+
 ```env
-# Required
-DISCORD_TOKEN=your_discord_bot_token
-OPENAI_API_KEY=your_openai_api_key
+# Required (all variables use MOBO_ prefix)
+MOBO_DISCORD__TOKEN=your_discord_bot_token
+MOBO_OPENROUTER__API_KEY=your_openrouter_api_key
+MOBO_OPENAI_API_KEY=your_openai_api_key
 
 # Database
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/mobo
+MOBO_DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/mobo
+
+# OpenRouter Configuration
+MOBO_OPENROUTER__BASE_URL=https://openrouter.ai/api/v1
 
 # Bot Configuration
-MAX_BOT_RESPONSES=3
-TOP_K_MEMORY_RESULTS=5
-OPENAI_MODEL=gpt-4o
-OPENAI_TEMPERATURE=0.7
+MOBO_MAX_BOT_RESPONSES=3
+MOBO_SUPERVISOR_LLM__MODEL=openai/gpt-4o
+MOBO_SUPERVISOR_LLM__TEMPERATURE=0.7
+
+# Response LLM Configuration
+MOBO_RESPONSE_LLM__MODEL=openai/gpt-4.1
+MOBO_RESPONSE_LLM__TEMPERATURE=0.8
+# Memory and RAG Configuration
+MOBO_SIMILARITY_THRESHOLD=0.7          # Minimum similarity for relevant conversations (0.0-1.0)
+MOBO_RECENT_MESSAGES_LIMIT=5           # Number of recent messages in context (1-20)
+MOBO_RELEVANT_MESSAGES_LIMIT=3         # Number of relevant messages in context (0-10)
 
 # Image Generation
-IMAGE_MODEL=dall-e-3
-IMAGE_SIZE=1024x1024
-IMAGE_QUALITY=standard
-IMAGE_DAILY_LIMIT=20
-IMAGE_HOURLY_LIMIT=2
+MOBO_IMAGE_MODEL=dall-e-3
+MOBO_IMAGE_SIZE=1024x1024
+MOBO_IMAGE_QUALITY=standard
+MOBO_IMAGE_DAILY_LIMIT=20
+MOBO_IMAGE_HOURLY_LIMIT=2
 
 # Logging
-LOG_LEVEL=INFO
+MOBO_LOG_LEVEL=INFO
 ```
 
 ## 🚀 Usage
@@ -158,103 +179,144 @@ mobo run
 
 ```mermaid
 graph TD
-    A[User Message] --> B[Get Context]
+    A[Discord Message] --> B[Load Context]
     B --> C[RAG Memory Lookup]
     B --> D[User Profile Retrieval]
-    C --> E[LLM with Tools]
+    C --> E[Supervisor LLM]
     D --> E
     E --> F{Tool Calls?}
     F -->|Yes| G[Execute Tools]
-    F -->|No| H[Update Profiles]
+    F -->|No| H[Learn User Context]
     G --> H
-    H --> I[Store in Memory]
-    I --> J[Response]
+    H --> I[Generate Response]
+    I --> J[Save Conversation]
+    J --> K[Discord Response]
 ```
 
 ### Project Structure
 
 ```
-mobo/
-├── agent/                    # LangGraph agent logic
-│   ├── agent_graph.py       # StateGraph implementation
-│   ├── memory.py            # RAG memory system
-│   ├── user_profiles.py     # User profile management
-│   ├── bot_interaction_tracker.py  # Anti-loop protection
-│   └── tools.py             # LangGraph tools
-├── bot/                     # Discord client
-│   ├── client.py            # Discord bot client
-│   ├── message_handler.py   # Message processing
-│   └── config.py            # Configuration management
-├── data/                    # Static data
-│   └── personality.txt      # Bot personality prompt
-└── cli.py                   # Command line interface
+src/mobo/
+├── core/                         # Core workflow logic
+│   ├── workflow.py              # Main LangGraph StateGraph
+│   ├── state.py                 # Bot state management
+│   ├── message_generator.py     # Response generation node
+│   └── learn_user_context_node.py  # Context learning node
+├── models/                      # Database models
+│   ├── base.py                  # Base model classes
+│   └── user.py                  # User profile models
+├── services/                    # Business logic
+│   ├── user_service.py          # User profile management
+│   └── rate_limiting.py         # Rate limiting service
+├── tools/                       # LangGraph tools
+│   ├── discord_tools.py         # Discord-specific tools
+│   ├── web_tools.py             # Web search and URL tools
+│   ├── common.py                # Tool decorators
+│   └── schemas.py               # Tool response schemas
+├── utils/                       # Utilities
+│   ├── embeddings.py            # OpenAI embedding generation
+│   └── rate_limiting.py         # Rate limiting decorators
+├── db.py                        # Database connection
+├── config.py                    # Configuration management
+└── main.py                      # Entry point
 ```
 
 ## 🎯 Key Features
 
-### Personality Preservation
+### Adaptive Context Learning
 
-The bot maintains consistent personality through conversation by:
+The bot learns how to interact with each user individually:
 
-- Wrapping personality prompts with preservation instructions
-- Injecting personality context into every LLM call
-- Supporting file-based, URL-based, or direct personality configuration
+- **Dynamic response tone adaptation** - Adjusts communication style based on user patterns
+- **Preference learning** - Automatically discovers what users like/dislike from conversation
+- **Conservative updates** - Only changes strategy when there's clear evidence
+- **Bot-centric approach** - Learns the bot's optimal interaction strategy, not user preferences
 
-### RAG Memory System
+### Advanced RAG Memory
 
-- **Semantic search** using OpenAI embeddings and pgvector
-- **Context retrieval** of similar past conversations
-- **Recent message** continuity for natural conversation flow
-- **Automatic storage** of all user and bot messages
+- **Semantic search** using OpenAI embeddings and PostgreSQL pgvector
+- **Hybrid context retrieval** combining recent + semantically relevant messages
+- **Persistent conversation memory** across Discord sessions
+- **Configurable similarity thresholds** for fine-tuning relevance
 
-### User Profiles
+### LangGraph Workflow Architecture
 
-- **Dynamic tone tracking** (friendly, neutral, rude)
-- **Interest tracking** (likes and dislikes)
-- **Custom tags** for additional metadata
-- **Automatic profile updates** based on interactions
+- **Supervisor pattern** - Intelligent tool selection and orchestration
+- **Multi-node StateGraph** - Load Context → Supervisor → Tools → Learn Context → Generate Response
+- **Conditional routing** - Dynamic flow based on tool requirements
+- **Async execution** with comprehensive error handling
 
-### Anti-Bot Loop Protection
+### Comprehensive Tool Integration
 
-- **Configurable limits** for bot-to-bot interactions
-- **Automatic detection** of bot users
-- **Smart reset** when humans join conversations
-- **Prevents infinite loops** between multiple bots
+- **Discord native tools** - Reactions, polls, stickers, channel management
+- **AI-powered features** - Vision analysis, DALL-E generation, web search
+- **Rate-limited execution** - Per-resource limits to prevent abuse
+- **Structured responses** - Type-safe Pydantic schemas for all outputs
 
 ## 🔧 Customization
 
 ### Adding New Tools
 
-Create new tools in `agent/tools.py`:
+Create new tools in `src/mobo/tools/`:
 
 ```python
+from .common import tool
+from .schemas import MyToolResponse
+
 @tool
-async def my_custom_tool(parameter: str) -> str:
+async def my_custom_tool(parameter: str) -> MyToolResponse:
     """Description of what the tool does.
 
     Args:
         parameter: Description of parameter
 
     Returns:
-        Tool response
+        Structured tool response
     """
     # Your tool logic here
-    return "Tool response"
+    return MyToolResponse(success=True, result="Tool response")
 ```
 
-Add to the tool list in `get_all_tools()`.
+Add to the tool registry in `src/mobo/tools/__init__.py`.
 
-### Modifying Personality
+### Context Learning Configuration
 
-Edit `data/personality.txt` or set environment variables:
+Control how the bot learns and adapts:
 
 ```env
-PERSONALITY_PROMPT="Your custom personality prompt"
-# or
-PERSONALITY_PROMPT_FILE="path/to/custom/personality.txt"
-# or
-PERSONALITY_PROMPT_URL="https://example.com/personality.txt"
+# Context Learning LLM (uses cheaper model for analysis)
+MOBO_CONTEXT_LEARNING_LLM__MODEL=openai/gpt-4o-mini
+MOBO_CONTEXT_LEARNING_LLM__TEMPERATURE=0.1
+
+# Learning behavior
+MOBO_ENABLE_CONTEXT_LEARNING=true          # Enable/disable learning
+MOBO_LEARNING_CONFIDENCE_THRESHOLD=0.7     # How confident analysis must be
 ```
+
+### Memory and RAG Configuration
+
+The bot uses semantic similarity to find relevant past conversations. You can
+tune these settings:
+
+```env
+# How similar past conversations need to be to include in context (0.0-1.0)
+# Lower values = more conversations included, higher values = only very similar ones
+MOBO_SIMILARITY_THRESHOLD=0.7
+
+# Number of recent messages to always include (1-20)
+MOBO_RECENT_MESSAGES_LIMIT=5
+
+# Number of semantically relevant messages to include (0-10)
+MOBO_RELEVANT_MESSAGES_LIMIT=3
+```
+
+**Examples:**
+
+- `MOBO_SIMILARITY_THRESHOLD=0.9` - Only include very similar conversations
+- `MOBO_SIMILARITY_THRESHOLD=0.5` - Include more loosely related conversations
+- `MOBO_RECENT_MESSAGES_LIMIT=10` - Include more recent context
+- `MOBO_RELEVANT_MESSAGES_LIMIT=0` - Disable semantic search, only use recent
+  messages
 
 ### Database Configuration
 
@@ -262,7 +324,7 @@ The bot automatically creates the required database schema. For custom setups:
 
 ```python
 # Custom database configuration
-DATABASE_URL=postgresql+asyncpg://user:pass@host:port/db
+MOBO_DATABASE_URL=postgresql+asyncpg://user:pass@host:port/db
 DATABASE_ECHO=true  # Enable SQL logging
 DATABASE_POOL_SIZE=20
 DATABASE_MAX_OVERFLOW=30

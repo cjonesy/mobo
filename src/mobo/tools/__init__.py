@@ -1,52 +1,19 @@
-"""Tools for the Discord bot agent."""
+"""
+Bot tools and capabilities.
 
-from .discord_tools import (
-    change_nickname,
-    get_current_chat_users,
-    mention_user,
-    mention_message_author,
-    generate_and_set_profile_picture,
-)
-from .image_generation import generate_image
-from .context import set_discord_context, get_discord_context
-from .giphy_tools import SearchGiphyTool
-from .user_lookup import (
-    SearchUsersByLikeTool,
-    SearchUsersByDislikeTool,
-    SearchUsersByAliasTool,
-    GetUserProfileTool,
-)
+This module contains all the tools that the bot can use to interact with
+external services, Discord features, and generate content.
+"""
 
-# Export all tools for easy access
+# Import all tool modules to trigger registration
+from . import discord_tools  # noqa
+from . import openai_tools  # noqa
+from . import giphy_tools  # noqa
+from . import web_tools  # noqa
+
+from .common import get_all_tools
+
+# Main exports for the tools module
 __all__ = [
-    "change_nickname",
-    "get_current_chat_users",
-    "mention_user",
-    "mention_message_author",
-    "generate_and_set_profile_picture",
-    "generate_image",
-    "set_discord_context",
-    "get_discord_context",
-    "SearchGiphyTool",
-    "SearchUsersByLikeTool",
-    "SearchUsersByDislikeTool",
-    "SearchUsersByAliasTool",
-    "GetUserProfileTool",
+    "get_all_tools",
 ]
-
-
-def get_all_tools():
-    """Get all available tools for the LangChain agent."""
-    return [
-        generate_image,
-        generate_and_set_profile_picture,
-        change_nickname,
-        get_current_chat_users,
-        mention_user,
-        mention_message_author,
-        SearchGiphyTool(),
-        SearchUsersByLikeTool(),
-        SearchUsersByDislikeTool(),
-        SearchUsersByAliasTool(),
-        GetUserProfileTool(),
-    ]

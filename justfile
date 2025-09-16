@@ -32,9 +32,9 @@ dev:
         i=$((i+1)); \
     done
     @echo "🗄️ Initializing database schema..."
-    uv run python -m src.mobo init-db
+    uv run python scripts/init_db.py
     @echo "🤖 Starting Discord bot locally..."
-    uv run python -m src.mobo run
+    uv run mobo-dev
 
 # Stop development environment
 dev-stop:
@@ -76,7 +76,7 @@ install:
 # Run the bot locally (assumes external database)
 run:
     @echo "🤖 Starting Discord bot locally..."
-    uv run python -m src.mobo run
+    uv run python -m mobo.main
 
 # === TESTING & QUALITY ===
 

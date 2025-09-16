@@ -133,3 +133,5 @@ dmypy.json
 .venv/
 
 conversation_data/
+
+.claude/
