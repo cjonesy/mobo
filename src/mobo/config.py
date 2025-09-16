@@ -61,6 +61,27 @@ class ResponseLLMSettings(BaseSettings):
     )
 
 
+class SummarizationLLMSettings(BaseSettings):
+    """Summarization LLM configuration for web content analysis."""
+
+    model: str = Field(
+        default="anthropic/claude-3-haiku",
+        description="Model for web content summarization and analysis",
+    )
+    temperature: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=2.0,
+        description="Temperature for content summarization (lower for consistency)",
+    )
+    max_chars: int = Field(
+        default=50000,
+        ge=1000,
+        le=150000,
+        description="Maximum characters of extracted text to send to LLM for summarization (consider model context limits)",
+    )
+
+
 class DatabaseSettings(BaseSettings):
     """Database configuration settings."""
 
@@ -244,6 +265,9 @@ class Settings(BaseSettings):
     openrouter: OpenRouterSettings = Field(default_factory=OpenRouterSettings)
     supervisor_llm: SupervisorLLMSettings = Field(default_factory=SupervisorLLMSettings)
     response_llm: ResponseLLMSettings = Field(default_factory=ResponseLLMSettings)
+    summarization_llm: SummarizationLLMSettings = Field(
+        default_factory=SummarizationLLMSettings
+    )
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     openai: OpenAISettings = Field(default_factory=OpenAISettings)
     personality: PersonalitySettings = Field(default_factory=PersonalitySettings)

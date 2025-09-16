@@ -23,6 +23,7 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.36",
     "asyncpg>=0.30.0",
     "httpx>=0.27.0",
+    "html2text>=2025.4.15",
     "pgvector>=0.3.0",
     "psycopg2-binary>=2.9.0",
     "click>=8.0.0",

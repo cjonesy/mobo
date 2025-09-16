@@ -9,7 +9,7 @@ external services, Discord features, and generate content.
 from . import discord_tools  # noqa
 from . import openai_tools  # noqa
 from . import giphy_tools  # noqa
-from . import web_search_tools  # noqa
+from . import web_tools  # noqa
 
 from .common import get_all_tools
 

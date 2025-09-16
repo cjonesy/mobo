@@ -106,3 +106,22 @@ class SimpleResponse(ToolResponse):
     """Simple success/error response for operations that don't return data."""
 
     pass
+
+
+class AvatarUpdateResponse(ToolResponse):
+    """Response for avatar generation and update operations."""
+
+    image_url: Optional[str] = Field(default=None, description="URL of the generated image")
+    avatar_set: bool = Field(default=False, description="Whether the avatar was successfully set")
+    scope: Optional[str] = Field(default=None, description="Scope of avatar change (global/guild)")
+    message: Optional[str] = Field(default=None, description="Additional information about the operation")
+
+
+class UrlSummaryResponse(ToolResponse):
+    """Response for URL fetching and summarization operations."""
+
+    url: Optional[str] = Field(default=None, description="The URL that was processed")
+    title: Optional[str] = Field(default=None, description="Title of the webpage")
+    summary: Optional[str] = Field(default=None, description="AI-generated summary of the content")
+    content_type: Optional[str] = Field(default=None, description="Type of content (article, video, image, etc.)")
+    domain: Optional[str] = Field(default=None, description="Domain name of the URL")

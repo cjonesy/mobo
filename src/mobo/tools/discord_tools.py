@@ -6,7 +6,9 @@ with structured Pydantic responses for type safety and better integration.
 """
 
 import logging
+import aiohttp
 from typing import List
+from urllib.parse import urlparse
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from .common import register_tool
@@ -20,18 +22,23 @@ from .schemas import (
     UserProfile,
     StickerListResponse,
     StickerData,
+    AvatarUpdateResponse,
+    UrlSummaryResponse,
 )
 
 logger = logging.getLogger(__name__)
 
 
 @tool
-async def list_emoji(config: RunnableConfig) -> EmojiListResponse:
-    """Lists all emoji available to the bot for use in responses and reactions.
+async def list_custom_emoji(config: RunnableConfig) -> EmojiListResponse:
+    """Lists custom server emoji available to the bot for use in responses and reactions.
 
-    Returns formatted emoji data with ready-to-use strings for embedding in messages
-    or adding as reactions. Examples: Discovering available custom emoji, finding
-    specific emoji for messages, checking what reactions are possible.
+    Returns formatted custom emoji data with ready-to-use strings for embedding in messages
+    or adding as reactions. Note: This only shows custom server emoji - you can also use
+    standard Unicode emoji like 😎, 👍, ❤️, 🎉, etc. without calling this tool.
+
+    Examples: Discovering available custom emoji, finding specific custom emoji for messages,
+    checking what custom reactions are possible.
 
     JSON Response Structure:
         On success:
@@ -53,7 +60,7 @@ async def list_emoji(config: RunnableConfig) -> EmojiListResponse:
     Returns:
         Structured response containing emoji data or error information.
     """
-    logger.info("😃 Calling list_emoji")
+    logger.info("😃 Calling list_custom_emoji")
 
     try:
         if not config or "configurable" not in config:
@@ -93,9 +100,11 @@ async def add_reaction(config: RunnableConfig, emoji: str) -> str:
     """Adds a reaction emoji to the user's message.
 
     Reactions are a way to express emotion, acknowledgment, or response without sending text.
-    You can use the list_emoji tool to get the names of available emoji, or use standard emoji.
+    You can use standard Unicode emoji directly (like 👍, 😂, ❤️, 🎉, 😎) or use the
+    list_custom_emoji tool to find custom server emoji. Standard emoji work great for most reactions!
+
     Examples: Showing approval (👍), expressing laughter (😂), acknowledging a message,
-    reacting to exciting news, showing agreement or disagreement.
+    reacting to exciting news (🎉), showing agreement or disagreement.
 
     Args:
         config: Runtime configuration containing Discord client context.
@@ -328,12 +337,13 @@ async def list_chat_users(config: RunnableConfig) -> UserListResponse:
 
 @tool
 async def list_stickers(config: RunnableConfig) -> StickerListResponse:
-    """Lists all stickers available to the bot in the current server.
+    """Lists all stickers available to the bot (server-specific custom stickers).
 
     Stickers are large emoji-like images that can be sent as messages
-    to express emotions or reactions. After calling this tool, you can use
-    the send_sticker tool to send stickers. Examples: Discovering available
-    stickers, finding appropriate reactions, checking what visual responses are possible.
+    to express emotions or reactions. This shows custom stickers uploaded to the current server.
+    Note: Standard Discord sticker packs are not accessible through the Discord API.
+    After calling this tool, you can use the send_sticker tool to send any of these stickers.
+    Examples: Discovering available stickers, finding appropriate reactions, checking what visual responses are possible.
 
     JSON Response Structure:
         On success:
@@ -364,19 +374,24 @@ async def list_stickers(config: RunnableConfig) -> StickerListResponse:
         if not client:
             raise ValueError("No Discord client available")
 
-        stickers = [
+        # Get server-specific custom stickers
+        server_stickers = [
             StickerData(
                 name=sticker.name,
                 id=str(sticker.id),
-                description=sticker.description or "",
+                description=sticker.description or f"Custom server sticker: {sticker.name}",
             )
             for sticker in client.stickers
             if sticker.available
         ]
 
-        logger.info(f"✅ Found {len(stickers)} stickers")
+        # Note: Discord.py doesn't provide access to standard Discord sticker packs
+        # Only server-specific custom stickers are available through the API
+        all_stickers = server_stickers
 
-        return StickerListResponse(success=True, stickers=stickers)
+        logger.info(f"✅ Found {len(server_stickers)} server stickers")
+
+        return StickerListResponse(success=True, stickers=all_stickers)
 
     except Exception as e:
         logger.error(f"❌ Failed to list stickers: {e}")
@@ -505,8 +520,131 @@ async def get_user_profile(config: RunnableConfig, user: str) -> UserProfileResp
         return UserProfileResponse(success=False, error=str(e))
 
 
+@tool
+async def generate_and_set_avatar(
+    config: RunnableConfig,
+    prompt: str,
+    guild_only: bool = False
+) -> AvatarUpdateResponse:
+    """Generates a new profile picture using DALL-E and sets it as the bot's avatar.
+
+    Creates a custom avatar image based on your description and updates the bot's profile picture.
+    Can set the avatar globally (everywhere) or attempt guild-specific if supported.
+
+    Examples: Creating themed avatars, seasonal updates, matching server aesthetics,
+    expressing personality changes, responding to events or celebrations.
+
+    Args:
+        config: Runtime configuration containing Discord client context.
+        prompt: Description of the desired avatar (e.g., "a friendly robot with blue eyes").
+        guild_only: If True, try to set guild-specific avatar only (may not be supported).
+
+    Returns:
+        Structured response with image URL, success status, and scope information.
+    """
+    logger.info(f"🎨 Calling generate_and_set_avatar", extra={"prompt": prompt[:50], "guild_only": guild_only})
+
+    try:
+        if not config or "configurable" not in config:
+            raise ValueError("No configuration available")
+
+        client = config["configurable"].get("discord_client")
+        message = config["configurable"].get("discord_message")
+
+        if not client:
+            raise ValueError("No Discord client available")
+
+        # Import here to avoid circular imports and to use the same config
+        from ..config import settings
+        from openai import AsyncOpenAI
+
+        if not settings.openai.api_key:
+            return AvatarUpdateResponse(
+                success=False,
+                error="OpenAI API key not configured for image generation"
+            )
+
+        # Generate image with DALL-E
+        logger.info(f"🎨 Generating avatar image with prompt: {prompt}")
+
+        openai_client = AsyncOpenAI(
+            api_key=settings.openai.api_key.get_secret_value(),
+            base_url="https://api.openai.com/v1",
+        )
+
+        image_response = await openai_client.images.generate(
+            prompt=f"Profile picture avatar: {prompt}. Clean, clear, suitable for Discord profile picture.",
+            n=1,
+            size="1024x1024",  # DALL-E 3 minimum size, will be resized for Discord
+            quality="standard",
+            model="dall-e-3",
+        )
+
+        image_url = image_response.data[0].url
+        logger.info(f"✅ Generated image: {image_url}")
+
+        # Download the image
+        async with aiohttp.ClientSession() as session:
+            async with session.get(image_url) as resp:
+                if resp.status != 200:
+                    raise Exception(f"Failed to download image: HTTP {resp.status}")
+                image_data = await resp.read()
+
+        logger.info(f"📥 Downloaded image data ({len(image_data)} bytes)")
+
+        # Try to set the avatar
+        avatar_set = False
+        scope = None
+        additional_message = None
+
+        try:
+            if guild_only and message and hasattr(message, 'guild') and message.guild:
+                # Try guild-specific avatar (this may not be supported for bots)
+                try:
+                    guild_member = message.guild.get_member(client.user.id)
+                    if guild_member and hasattr(guild_member, 'edit'):
+                        await guild_member.edit(avatar=image_data)
+                        avatar_set = True
+                        scope = "guild"
+                        logger.info(f"✅ Set guild-specific avatar for {message.guild.name}")
+                    else:
+                        raise Exception("Guild avatar setting not supported for bots")
+                except Exception as e:
+                    logger.warning(f"⚠️ Guild avatar failed: {e}, falling back to global")
+                    additional_message = f"Guild avatar failed ({str(e)}), set globally instead"
+                    # Fall through to global setting
+
+            if not avatar_set:
+                # Set global avatar
+                await client.user.edit(avatar=image_data)
+                avatar_set = True
+                scope = "global"
+                logger.info("✅ Set global bot avatar")
+
+        except Exception as avatar_error:
+            logger.error(f"❌ Failed to set avatar: {avatar_error}")
+            return AvatarUpdateResponse(
+                success=False,
+                error=f"Avatar generation succeeded but setting failed: {str(avatar_error)}",
+                image_url=image_url,
+                avatar_set=False
+            )
+
+        return AvatarUpdateResponse(
+            success=True,
+            image_url=image_url,
+            avatar_set=avatar_set,
+            scope=scope,
+            message=additional_message or f"Avatar successfully set ({scope})"
+        )
+
+    except Exception as e:
+        logger.error(f"❌ Failed to generate and set avatar: {e}")
+        return AvatarUpdateResponse(success=False, error=str(e))
+
+
 # Register all tools with the global registry
-register_tool(list_emoji)
+register_tool(list_custom_emoji)
 register_tool(add_reaction)
 register_tool(create_poll)
 register_tool(set_activity)
@@ -514,3 +652,4 @@ register_tool(list_chat_users)
 register_tool(list_stickers)
 register_tool(send_sticker)
 register_tool(get_user_profile)
+register_tool(generate_and_set_avatar)
