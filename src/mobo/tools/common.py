@@ -67,12 +67,15 @@ def tool(*args, **kwargs) -> Callable:
     def parameterized_decorator(*decorator_args, **decorator_kwargs):
         def inner_decorator(func: Callable) -> Any:
             # Create the LangChain tool instance with parameters
-            langchain_tool_instance = langchain_tool(*decorator_args, **decorator_kwargs)(func)
+            langchain_tool_instance = langchain_tool(
+                *decorator_args, **decorator_kwargs
+            )(func)
 
             # Auto-register it
             register_tool(langchain_tool_instance)
 
             return langchain_tool_instance
+
         return inner_decorator
 
     # Handle both @tool and @tool() syntax

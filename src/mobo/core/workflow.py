@@ -24,10 +24,12 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from .state import BotState, format_state_summary
 from .message_generator import message_generator_node
+from .learn_user_context_node import learn_user_context_node
 from ..config import settings
 from ..tools import get_all_tools
 from ..services import UserService
 from ..db import get_session_maker
+from ..utils.embeddings import generate_embedding
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.store.postgres import PostgresStore
 
@@ -79,8 +81,11 @@ async def chatbot_node(state: BotState) -> BotState:
             PERSONALITY:
             {personality}
 
-            USER CONTEXT:
+            BOT'S INTERACTION STRATEGY FOR THIS USER:
             {user_context}
+            Note: This is YOUR learned strategy for how YOU should interact with this specific user -
+            the tone YOU should use, things YOU know they like/dislike that YOU can reference.
+            These are the bot's adaptive decisions, not the user's stated preferences.
 
             GUIDELINES:
             - Stay true to your personality when choosing tools
@@ -158,45 +163,166 @@ def should_continue(state: BotState) -> str:
     messages = state.get("messages", [])
 
     if not messages:
-        return "message_generator"
+        return "learn_context"
 
     last_message = messages[-1]
 
     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
         return "tools"
     else:
-        return "message_generator"
+        return "learn_context"
 
 
 async def load_context_node_with_store(
     state: BotState, store: PostgresStore
 ) -> BotState:
     """
-    Load conversation context using PostgresStore.
+    Load conversation context using PostgresStore with RAG semantic search.
     """
-    logger.info("📑 Loading user and conversation context")
+    logger.info("📑 Loading user and conversation context with RAG")
 
     try:
         user_id = state.get("user_id", "")
         channel_id = state.get("channel_id", "")
+        user_message = state.get("user_message", "")
 
+        # Load user context from database
         session_maker = get_session_maker()
         user_service = UserService()
         async with session_maker() as session:
             user_context = await user_service.get_user_context_for_bot(session, user_id)
 
         namespace = ("conversations", f"channel_{channel_id}")
-        recent_messages = await store.asearch(namespace, limit=10)  # type: ignore
 
-        logger.info(f"📑 Loaded {len(recent_messages)} messages from context")
+        # Get recent messages (chronological context)
+        recent_messages = await store.asearch(
+            namespace, limit=settings.memory.recent_messages_limit
+        )
+        logger.debug(f"📑 Found {len(recent_messages)} recent messages")
 
+        # Generate embedding for current message for semantic search
+        context_messages = []
+        current_embedding = None
+
+        if user_message and settings.memory.relevant_messages_limit > 0:
+            try:
+                current_embedding = await generate_embedding(user_message)
+                logger.debug("📊 Generated query embedding for semantic search")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to generate query embedding: {e}")
+
+        # Get all messages for semantic search if we have a query embedding
+        all_messages = []
+        if current_embedding:
+            try:
+                # Get more messages for semantic search (we'll filter by similarity)
+                all_messages = await store.asearch(namespace, limit=100)
+                logger.debug(
+                    f"📑 Retrieved {len(all_messages)} total messages for semantic search"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"⚠️ Failed to retrieve messages for semantic search: {e}"
+                )
+
+        # Process recent messages
+        recent_keys = set()
+        for msg in recent_messages:
+            try:
+                msg_data = msg.value
+                context_messages.append(
+                    {
+                        "content": msg_data.get("content", ""),
+                        "role": msg_data.get("role", "unknown"),
+                        "timestamp": msg_data.get("timestamp", ""),
+                        "user_id": msg_data.get("user_id", ""),
+                        "context_type": "recent",
+                    }
+                )
+                recent_keys.add(msg.key)
+            except Exception as e:
+                logger.warning(f"⚠️ Error processing recent message: {e}")
+
+        # Find semantically relevant messages
+        if current_embedding and all_messages:
+            try:
+                from ..utils.embeddings import cosine_similarity
+
+                relevant_candidates = []
+                for msg in all_messages:
+                    if msg.key in recent_keys:
+                        continue  # Skip messages already included as recent
+
+                    try:
+                        msg_data = msg.value
+                        msg_embedding = msg_data.get("embedding")
+
+                        if msg_embedding and len(msg_embedding) == len(
+                            current_embedding
+                        ):
+                            similarity = cosine_similarity(
+                                current_embedding, msg_embedding
+                            )
+
+                            if similarity >= settings.memory.similarity_threshold:
+                                relevant_candidates.append(
+                                    {
+                                        "content": msg_data.get("content", ""),
+                                        "role": msg_data.get("role", "unknown"),
+                                        "timestamp": msg_data.get("timestamp", ""),
+                                        "user_id": msg_data.get("user_id", ""),
+                                        "context_type": "semantic",
+                                        "similarity": similarity,
+                                    }
+                                )
+                    except Exception as e:
+                        logger.debug(f"Error processing message for similarity: {e}")
+                        continue
+
+                # Sort by similarity and take top N
+                relevant_candidates.sort(key=lambda x: x["similarity"], reverse=True)
+                relevant_messages = relevant_candidates[
+                    : settings.memory.relevant_messages_limit
+                ]
+
+                # Add to context
+                context_messages.extend(relevant_messages)
+
+                logger.info(
+                    f"📑 Found {len(relevant_messages)} semantically relevant messages (threshold: {settings.memory.similarity_threshold})"
+                )
+
+            except Exception as e:
+                logger.warning(f"⚠️ Error in semantic search: {e}")
+
+        # Sort all context messages by timestamp for chronological order
+        try:
+            context_messages.sort(key=lambda x: x.get("timestamp", ""))
+        except Exception as e:
+            logger.warning(f"⚠️ Error sorting context messages: {e}")
+
+        # Store context in state
         state["user_context"] = user_context
+        state["conversation_context"] = context_messages
+
+        total_recent = len(
+            [m for m in context_messages if m.get("context_type") == "recent"]
+        )
+        total_semantic = len(
+            [m for m in context_messages if m.get("context_type") == "semantic"]
+        )
+
+        logger.info(
+            f"📑 Loaded conversation context: {total_recent} recent + {total_semantic} semantic = {len(context_messages)} total messages"
+        )
+
         return state
 
     except Exception as e:
-        logger.error(f"Error loading context: {e}")
+        logger.error(f"❌ Error loading RAG context: {e}")
         # Fallback to minimal context
         state["user_context"] = {"user_id": user_id, "response_tone": "neutral"}
+        state["conversation_context"] = []
         return state
 
 
@@ -205,9 +331,9 @@ async def save_conversation_node_with_store(
     store: PostgresStore,
 ) -> BotState:
     """
-    Save conversation using PostgresStore.
+    Save conversation using PostgresStore with embeddings for RAG.
     """
-    logger.info("💾 Persisting conversation to database")
+    logger.info("💾 Persisting conversation to database with embeddings")
 
     try:
         user_id = state.get("user_id", "")
@@ -219,6 +345,16 @@ async def save_conversation_node_with_store(
         timestamp = datetime.now(UTC).isoformat()
 
         if user_message:
+            # Generate embedding for user message
+            try:
+                user_embedding = await generate_embedding(user_message)
+                logger.debug(
+                    f"📊 Generated embedding for user message ({len(user_embedding)} dims)"
+                )
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to generate user message embedding: {e}")
+                user_embedding = None
+
             await store.aput(
                 tuple(namespace),
                 f"msg_{timestamp}_user_{user_id}",
@@ -228,10 +364,23 @@ async def save_conversation_node_with_store(
                     "user_id": user_id,
                     "channel_id": channel_id,
                     "timestamp": timestamp,
+                    "embedding": user_embedding,
                 },
             )
 
         if final_response:
+            # Generate embedding for assistant response
+            try:
+                assistant_embedding = await generate_embedding(final_response)
+                logger.debug(
+                    f"📊 Generated embedding for assistant response ({len(assistant_embedding)} dims)"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"⚠️ Failed to generate assistant response embedding: {e}"
+                )
+                assistant_embedding = None
+
             await store.aput(
                 tuple(namespace),
                 f"msg_{timestamp}_assistant_{user_id}",
@@ -242,13 +391,15 @@ async def save_conversation_node_with_store(
                     "channel_id": channel_id,
                     "timestamp": timestamp,
                     "model_used": "gpt-4",
+                    "embedding": assistant_embedding,
                 },
             )
 
+        logger.info("✅ Conversation saved with embeddings")
         return state
 
     except Exception as e:
-        logger.error(f"❌ Error saving conversation: {e}")
+        logger.error(f"❌ Error saving conversation with embeddings: {e}")
         return state
 
 
@@ -279,19 +430,20 @@ async def create_bot_workflow(checkpointer, store) -> CompiledStateGraph:
     workflow.add_edge("load_context", "chatbot")
 
     if has_tools:
-        # Supervisor pattern: chatbot (supervisor) → tools → message_generator → save_conversation
+        # Supervisor pattern: chatbot (supervisor) → tools → learn_context → message_generator → save_conversation
         workflow.add_conditional_edges(
             "chatbot",
             should_continue,
-            {"tools": "tools", "message_generator": "message_generator"},
+            {"tools": "tools", "learn_context": "learn_context"},
         )
-        # Tools → Message generator (personality response)
-        workflow.add_edge("tools", "message_generator")
+        # Tools → Learn context (analyze interaction strategy)
+        workflow.add_edge("tools", "learn_context")
     else:
-        # No tools: chatbot → message_generator
-        workflow.add_edge("chatbot", "message_generator")
+        # No tools: chatbot → learn_context
+        workflow.add_edge("chatbot", "learn_context")
 
-    # Message generator → Save conversation
+    # Learn context → Message generator → Save conversation
+    workflow.add_edge("learn_context", "message_generator")
     workflow.add_edge("message_generator", "save_conversation")
 
     # Save conversation → End
@@ -307,6 +459,7 @@ async def create_bot_workflow(checkpointer, store) -> CompiledStateGraph:
 
     workflow.add_node("load_context", load_context_with_store)
     workflow.add_node("chatbot", chatbot_node)
+    workflow.add_node("learn_context", learn_user_context_node)
     workflow.add_node("message_generator", message_generator_node)
     workflow.add_node("save_conversation", save_conversation_with_store)
 
@@ -405,6 +558,7 @@ async def execute_workflow(
                 "channel_id": channel_id,
                 "timestamp": datetime.now(UTC),
                 "user_context": {},
+                "conversation_context": [],
                 "messages": [],
                 "final_response": None,
                 "model_calls": 0,
@@ -418,6 +572,7 @@ async def execute_workflow(
             "channel_id": channel_id,
             "timestamp": datetime.now(UTC),
             "user_context": {},
+            "conversation_context": [],
             "messages": [],
             "final_response": None,
             "model_calls": 0,

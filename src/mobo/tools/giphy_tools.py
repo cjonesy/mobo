@@ -78,5 +78,3 @@ async def search_gif(query: str, limit: int = 1) -> Tuple[str, Dict]:
     except Exception as e:
         logger.error(f"❌ GIF search failed for query '{query}': {e}")
         return f"Sorry, I encountered an error searching for GIFs: {str(e)}", {}
-
-

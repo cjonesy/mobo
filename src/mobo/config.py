@@ -134,6 +134,21 @@ class VisionLLMSettings(BaseSettings):
     )
 
 
+class ContextLearningLLMSettings(BaseSettings):
+    """Context learning LLM configuration for analyzing user interaction patterns."""
+
+    model: str = Field(
+        default="openai/gpt-4o-mini",
+        description="Model for analyzing conversation patterns and learning user context (fast, cheap model recommended)",
+    )
+    temperature: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=2.0,
+        description="Temperature for context analysis (lower for consistent analysis)",
+    )
+
+
 class DatabaseSettings(BaseSettings):
     """Database configuration settings."""
 
@@ -400,6 +415,9 @@ class Settings(BaseSettings):
         default_factory=SummarizationLLMSettings
     )
     vision_llm: VisionLLMSettings = Field(default_factory=VisionLLMSettings)
+    context_learning_llm: ContextLearningLLMSettings = Field(
+        default_factory=ContextLearningLLMSettings
+    )
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     openai: OpenAISettings = Field(default_factory=OpenAISettings)
     personality: PersonalitySettings = Field(default_factory=PersonalitySettings)

@@ -41,16 +41,16 @@ class TestWorkflowNodes:
         """Test the should_continue conditional edge function."""
         from mobo.core.workflow import should_continue
 
-        # Test case: no messages - should go to message generator
+        # Test case: no messages - should go to learn context
         result = should_continue(sample_bot_state)
-        assert result == "message_generator"
+        assert result == "learn_context"
 
-        # Test case: message with no tool calls - should go to message generator
+        # Test case: message with no tool calls - should go to learn context
         mock_message = MagicMock()
         mock_message.tool_calls = []
         sample_bot_state["messages"] = [mock_message]
         result = should_continue(sample_bot_state)
-        assert result == "message_generator"
+        assert result == "learn_context"
 
         # Test case: message with tool calls - should go to tools
         mock_message.tool_calls = [{"name": "test_tool", "args": {}}]

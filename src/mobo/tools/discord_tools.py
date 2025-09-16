@@ -8,8 +8,7 @@ with structured Pydantic responses for type safety and better integration.
 import logging
 import aiohttp
 from textwrap import dedent
-from typing import List
-from urllib.parse import urlparse
+from typing import List, cast, Any
 from langchain_core.runnables import RunnableConfig
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
@@ -548,7 +547,7 @@ async def generate_and_set_avatar(
         Structured response with image URL, success status, and scope information.
     """
     logger.info(
-        f"🎨 Calling generate_and_set_avatar",
+        "🎨 Calling generate_and_set_avatar",
         extra={"prompt": prompt[:50], "guild_only": guild_only},
     )
 
@@ -563,7 +562,6 @@ async def generate_and_set_avatar(
             raise ValueError("No Discord client available")
 
         from ..config import settings
-
 
         # Generate image with DALL-E
         logger.info(f"🎨 Generating avatar image with prompt: {prompt}")
@@ -581,12 +579,14 @@ async def generate_and_set_avatar(
             model="dall-e-3",
         )
 
+        if not image_response.data:
+            raise Exception("No images returned from DALL-E")
         image_url = image_response.data[0].url
         logger.info(f"✅ Generated image: {image_url}")
 
         # Download the image
         async with aiohttp.ClientSession() as session:
-            async with session.get(image_url) as resp:
+            async with session.get(str(image_url)) as resp:
                 if resp.status != 200:
                     raise Exception(f"Failed to download image: HTTP {resp.status}")
                 image_data = await resp.read()
@@ -669,7 +669,7 @@ async def analyze_message_image(
     Returns:
         Structured response containing image analysis, description, and extracted information.
     """
-    logger.info(f"🖼️ Calling analyze_message_image", extra={"image_index": image_index})
+    logger.info("🖼️ Calling analyze_message_image", extra={"image_index": image_index})
 
     try:
         if not config or "configurable" not in config:
@@ -714,7 +714,6 @@ async def analyze_message_image(
         # Use OpenAI vision via OpenRouter
         from ..config import settings
 
-
         # Define structured response model inline
         class VisionAnalysis(BaseModel):
             """Structured vision analysis response from LLM."""
@@ -737,7 +736,7 @@ async def analyze_message_image(
 
         # Use structured output with Pydantic model
         structured_llm = ChatOpenAI(
-            api_key=settings.openrouter.api_key.get_secret_value(),
+            api_key=settings.openrouter.api_key,
             base_url=settings.openrouter.base_url,
             model=settings.vision_llm.model,
             temperature=settings.vision_llm.temperature,
@@ -761,20 +760,23 @@ async def analyze_message_image(
         ]
 
         # Get structured response directly
-        analysis: VisionAnalysis = await structured_llm.ainvoke(
-            [HumanMessage(content=message_content)]
-        )
+        analysis = await structured_llm.ainvoke([HumanMessage(content=cast(Any, message_content))])
 
-        logger.info(f"✅ Image analyzed successfully: {analysis.description[:50]}...")
+        # Cast to VisionAnalysis since structured output should return the correct type
+        vision_analysis = cast(VisionAnalysis, analysis)
+
+        logger.info(
+            f"✅ Image analyzed successfully: {vision_analysis.description[:50]}..."
+        )
 
         return ImageAnalysisResponse(
             success=True,
             image_url=image_url,
-            description=analysis.description,
-            objects=analysis.objects,
-            text_content=analysis.text if analysis.text else None,
-            image_type=analysis.image_type,
-            confidence=analysis.confidence,
+            description=vision_analysis.description,
+            objects=vision_analysis.objects,
+            text_content=vision_analysis.text if vision_analysis.text else None,
+            image_type=vision_analysis.image_type,
+            confidence=vision_analysis.confidence,
         )
 
     except Exception as e:
@@ -818,7 +820,7 @@ async def list_channels(config: RunnableConfig) -> ChannelListResponse:
 
         # Get all channels in the guild
         channels = []
-        channel_counts = {}
+        channel_counts: dict[str, int] = {}
 
         for channel in guild.channels:
             # Get channel type as string
@@ -881,5 +883,3 @@ async def list_channels(config: RunnableConfig) -> ChannelListResponse:
     except Exception as e:
         logger.error(f"❌ Failed to list channels: {e}")
         return ChannelListResponse(success=False, error=str(e))
-
-

@@ -40,6 +40,9 @@ class BotState(TypedDict):
     user_context: Dict[str, Any]
     """User context data (response_tone, likes, dislikes, etc.)"""
 
+    conversation_context: List[Dict[str, Any]]
+    """Conversation history from RAG (recent + semantically relevant messages)"""
+
     # =============================================================================
     # LANGGRAPH STATE (Set by chatbot node)
     # =============================================================================

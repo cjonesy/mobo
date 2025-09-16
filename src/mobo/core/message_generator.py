@@ -39,13 +39,21 @@ async def message_generator_node(
             PERSONALITY:
             {personality}
 
-            USER CONTEXT:
+            BOT'S INTERACTION STRATEGY FOR THIS USER:
             {user_context}
+            Note: This is YOUR learned strategy for how YOU should interact with this specific user -
+            the tone YOU should use, things YOU know they like/dislike that YOU can reference.
+            These are the bot's adaptive decisions, not the user's stated preferences.
+
+            CONVERSATION CONTEXT:
+            {conversation_context}
 
             RESPONSE GUIDELINES:
             - Be true to your personality and respond naturally
             - Show enthusiasm that matches your personality
             - Be conversational and engaging
+            - Use the conversation context to maintain continuity and remember past interactions
+            - Reference relevant past messages when appropriate
             - Don't mention that you're using tools or processing results
             """
         ).strip()
@@ -113,12 +121,41 @@ async def message_generator_node(
             ]
         )
 
+        # Format conversation context from RAG
+        def format_conversation_context(context_messages):
+            """Format conversation context messages for the prompt."""
+            if not context_messages:
+                return "No previous conversation context available."
+
+            formatted_parts = []
+            for msg in context_messages:
+                role = "User" if msg.get("role") == "user" else "Assistant"
+                content = msg.get("content", "")
+                context_type = msg.get("context_type", "")
+
+                # Add context type indicator
+                type_indicator = ""
+                if context_type == "recent":
+                    type_indicator = " (recent)"
+                elif context_type == "semantic":
+                    similarity = msg.get("similarity", 0)
+                    type_indicator = f" (relevant: {similarity:.2f})"
+
+                formatted_parts.append(f"{role}{type_indicator}: {content}")
+
+            return "\n".join(formatted_parts)
+
+        conversation_context = format_conversation_context(
+            state.get("conversation_context", [])
+        )
+
         # Create the chain and invoke with structured data
         chain = prompt_template | llm
         response = await chain.ainvoke(
             {
                 "personality": settings.personality.prompt,
                 "user_context": state.get("user_context", {}),
+                "conversation_context": conversation_context,
                 "conversation_history": conversation_history,
                 "user_input": state.get("user_message", ""),
                 "tool_results": "\n".join(tool_context_parts),

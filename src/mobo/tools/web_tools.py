@@ -252,7 +252,7 @@ async def fetch_and_summarize_url(url: str) -> UrlSummaryResponse:
     Returns:
         Structured response containing URL info, title, and AI-generated summary
     """
-    logger.info(f"🌐 Calling fetch_and_summarize_url", extra={"url": url})
+    logger.info("🌐 Calling fetch_and_summarize_url", extra={"url": url})
 
     try:
         # Parse URL to get domain info
@@ -292,7 +292,7 @@ async def fetch_and_summarize_url(url: str) -> UrlSummaryResponse:
         # Use ChatOpenAI with OpenRouter to summarize the content
 
         llm = ChatOpenAI(
-            api_key=settings.openrouter.api_key.get_secret_value(),
+            api_key=settings.openrouter.api_key,
             base_url=settings.openrouter.base_url,
             model=settings.summarization_llm.model,
             temperature=settings.summarization_llm.temperature,
@@ -316,8 +316,12 @@ async def fetch_and_summarize_url(url: str) -> UrlSummaryResponse:
         """
         ).strip()
 
-        response = await llm.ainvoke(prompt)
-        summary_text = response.content
+        llm_response = await llm.ainvoke(prompt)
+        # Handle both string and list content types
+        if isinstance(llm_response.content, str):
+            summary_text = llm_response.content
+        else:
+            summary_text = str(llm_response.content)
 
         # Parse the response to extract components
         lines = summary_text.split("\n")

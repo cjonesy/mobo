@@ -111,10 +111,18 @@ class SimpleResponse(ToolResponse):
 class AvatarUpdateResponse(ToolResponse):
     """Response for avatar generation and update operations."""
 
-    image_url: Optional[str] = Field(default=None, description="URL of the generated image")
-    avatar_set: bool = Field(default=False, description="Whether the avatar was successfully set")
-    scope: Optional[str] = Field(default=None, description="Scope of avatar change (global/guild)")
-    message: Optional[str] = Field(default=None, description="Additional information about the operation")
+    image_url: Optional[str] = Field(
+        default=None, description="URL of the generated image"
+    )
+    avatar_set: bool = Field(
+        default=False, description="Whether the avatar was successfully set"
+    )
+    scope: Optional[str] = Field(
+        default=None, description="Scope of avatar change (global/guild)"
+    )
+    message: Optional[str] = Field(
+        default=None, description="Additional information about the operation"
+    )
 
 
 class UrlSummaryResponse(ToolResponse):
@@ -122,20 +130,36 @@ class UrlSummaryResponse(ToolResponse):
 
     url: Optional[str] = Field(default=None, description="The URL that was processed")
     title: Optional[str] = Field(default=None, description="Title of the webpage")
-    summary: Optional[str] = Field(default=None, description="AI-generated summary of the content")
-    content_type: Optional[str] = Field(default=None, description="Type of content (article, video, image, etc.)")
+    summary: Optional[str] = Field(
+        default=None, description="AI-generated summary of the content"
+    )
+    content_type: Optional[str] = Field(
+        default=None, description="Type of content (article, video, image, etc.)"
+    )
     domain: Optional[str] = Field(default=None, description="Domain name of the URL")
 
 
 class ImageAnalysisResponse(ToolResponse):
     """Response for image analysis operations."""
 
-    image_url: Optional[str] = Field(default=None, description="URL of the image that was analyzed")
-    description: Optional[str] = Field(default=None, description="AI-generated description of the image")
-    objects: Optional[List[str]] = Field(default_factory=list, description="Objects or items identified in the image")
-    text_content: Optional[str] = Field(default=None, description="Any text found in the image (OCR)")
-    image_type: Optional[str] = Field(default=None, description="Type of image (photo, screenshot, diagram, etc.)")
-    confidence: Optional[str] = Field(default=None, description="AI confidence level in the analysis")
+    image_url: Optional[str] = Field(
+        default=None, description="URL of the image that was analyzed"
+    )
+    description: Optional[str] = Field(
+        default=None, description="AI-generated description of the image"
+    )
+    objects: Optional[List[str]] = Field(
+        default_factory=list, description="Objects or items identified in the image"
+    )
+    text_content: Optional[str] = Field(
+        default=None, description="Any text found in the image (OCR)"
+    )
+    image_type: Optional[str] = Field(
+        default=None, description="Type of image (photo, screenshot, diagram, etc.)"
+    )
+    confidence: Optional[str] = Field(
+        default=None, description="AI confidence level in the analysis"
+    )
 
 
 class ChannelData(BaseModel):
@@ -164,9 +188,19 @@ class ChannelListResponse(ToolResponse):
 class StickerCreationResponse(ToolResponse):
     """Response for sticker creation and upload operations."""
 
-    sticker_name: Optional[str] = Field(default=None, description="Name of the created sticker")
+    sticker_name: Optional[str] = Field(
+        default=None, description="Name of the created sticker"
+    )
     sticker_id: Optional[str] = Field(default=None, description="Discord sticker ID")
-    image_url: Optional[str] = Field(default=None, description="URL of the generated image")
-    file_size: Optional[int] = Field(default=None, description="Final file size in bytes")
-    dimensions: Optional[str] = Field(default=None, description="Image dimensions (width x height)")
-    server_sticker_slots: Optional[dict] = Field(default_factory=dict, description="Server sticker slot usage")
+    image_url: Optional[str] = Field(
+        default=None, description="URL of the generated image"
+    )
+    file_size: Optional[int] = Field(
+        default=None, description="Final file size in bytes"
+    )
+    dimensions: Optional[str] = Field(
+        default=None, description="Image dimensions (width x height)"
+    )
+    server_sticker_slots: Optional[dict] = Field(
+        default_factory=dict, description="Server sticker slot usage"
+    )
