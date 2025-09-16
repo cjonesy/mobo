@@ -125,3 +125,37 @@ class UrlSummaryResponse(ToolResponse):
     summary: Optional[str] = Field(default=None, description="AI-generated summary of the content")
     content_type: Optional[str] = Field(default=None, description="Type of content (article, video, image, etc.)")
     domain: Optional[str] = Field(default=None, description="Domain name of the URL")
+
+
+class ImageAnalysisResponse(ToolResponse):
+    """Response for image analysis operations."""
+
+    image_url: Optional[str] = Field(default=None, description="URL of the image that was analyzed")
+    description: Optional[str] = Field(default=None, description="AI-generated description of the image")
+    objects: Optional[List[str]] = Field(default_factory=list, description="Objects or items identified in the image")
+    text_content: Optional[str] = Field(default=None, description="Any text found in the image (OCR)")
+    image_type: Optional[str] = Field(default=None, description="Type of image (photo, screenshot, diagram, etc.)")
+    confidence: Optional[str] = Field(default=None, description="AI confidence level in the analysis")
+
+
+class ChannelData(BaseModel):
+    """Individual channel information."""
+
+    name: str = Field(description="Channel name")
+    id: str = Field(description="Discord channel ID")
+    type: str = Field(description="Channel type (text, voice, category, etc.)")
+    description: Optional[str] = Field(description="Channel description/topic")
+    mention: str = Field(description="Channel mention format (#channel)")
+    category: Optional[str] = Field(description="Category name the channel belongs to")
+    position: int = Field(description="Channel position in the list")
+    nsfw: bool = Field(description="Whether the channel is marked as NSFW")
+
+
+class ChannelListResponse(ToolResponse):
+    """Response for listing server channels."""
+
+    channels: List[ChannelData] = Field(
+        default_factory=list, description="Array of channel objects"
+    )
+    total: int = Field(default=0, description="Total number of channels")
+    by_type: dict = Field(default_factory=dict, description="Channel counts by type")

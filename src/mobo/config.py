@@ -82,6 +82,21 @@ class SummarizationLLMSettings(BaseSettings):
     )
 
 
+class VisionLLMSettings(BaseSettings):
+    """Vision LLM configuration for image analysis."""
+
+    model: str = Field(
+        default="openai/gpt-4o",
+        description="Model for image analysis and vision tasks (must support vision)",
+    )
+    temperature: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=2.0,
+        description="Temperature for vision analysis (lower for consistency)",
+    )
+
+
 class DatabaseSettings(BaseSettings):
     """Database configuration settings."""
 
@@ -268,6 +283,7 @@ class Settings(BaseSettings):
     summarization_llm: SummarizationLLMSettings = Field(
         default_factory=SummarizationLLMSettings
     )
+    vision_llm: VisionLLMSettings = Field(default_factory=VisionLLMSettings)
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     openai: OpenAISettings = Field(default_factory=OpenAISettings)
     personality: PersonalitySettings = Field(default_factory=PersonalitySettings)

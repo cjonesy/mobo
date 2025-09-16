@@ -7,10 +7,15 @@ with structured Pydantic responses for type safety and better integration.
 
 import logging
 import aiohttp
+from textwrap import dedent
 from typing import List
 from urllib.parse import urlparse
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
+from langchain_core.messages import HumanMessage
+from langchain_openai import ChatOpenAI
+from openai import AsyncOpenAI
+from pydantic import BaseModel, Field
 from .common import register_tool
 from .schemas import (
     EmojiListResponse,
@@ -24,6 +29,9 @@ from .schemas import (
     StickerData,
     AvatarUpdateResponse,
     UrlSummaryResponse,
+    ImageAnalysisResponse,
+    ChannelListResponse,
+    ChannelData,
 )
 
 logger = logging.getLogger(__name__)
@@ -379,7 +387,8 @@ async def list_stickers(config: RunnableConfig) -> StickerListResponse:
             StickerData(
                 name=sticker.name,
                 id=str(sticker.id),
-                description=sticker.description or f"Custom server sticker: {sticker.name}",
+                description=sticker.description
+                or f"Custom server sticker: {sticker.name}",
             )
             for sticker in client.stickers
             if sticker.available
@@ -522,9 +531,7 @@ async def get_user_profile(config: RunnableConfig, user: str) -> UserProfileResp
 
 @tool
 async def generate_and_set_avatar(
-    config: RunnableConfig,
-    prompt: str,
-    guild_only: bool = False
+    config: RunnableConfig, prompt: str, guild_only: bool = False
 ) -> AvatarUpdateResponse:
     """Generates a new profile picture using DALL-E and sets it as the bot's avatar.
 
@@ -542,7 +549,10 @@ async def generate_and_set_avatar(
     Returns:
         Structured response with image URL, success status, and scope information.
     """
-    logger.info(f"🎨 Calling generate_and_set_avatar", extra={"prompt": prompt[:50], "guild_only": guild_only})
+    logger.info(
+        f"🎨 Calling generate_and_set_avatar",
+        extra={"prompt": prompt[:50], "guild_only": guild_only},
+    )
 
     try:
         if not config or "configurable" not in config:
@@ -554,14 +564,12 @@ async def generate_and_set_avatar(
         if not client:
             raise ValueError("No Discord client available")
 
-        # Import here to avoid circular imports and to use the same config
         from ..config import settings
-        from openai import AsyncOpenAI
 
         if not settings.openai.api_key:
             return AvatarUpdateResponse(
                 success=False,
-                error="OpenAI API key not configured for image generation"
+                error="OpenAI API key not configured for image generation",
             )
 
         # Generate image with DALL-E
@@ -598,20 +606,26 @@ async def generate_and_set_avatar(
         additional_message = None
 
         try:
-            if guild_only and message and hasattr(message, 'guild') and message.guild:
+            if guild_only and message and hasattr(message, "guild") and message.guild:
                 # Try guild-specific avatar (this may not be supported for bots)
                 try:
                     guild_member = message.guild.get_member(client.user.id)
-                    if guild_member and hasattr(guild_member, 'edit'):
+                    if guild_member and hasattr(guild_member, "edit"):
                         await guild_member.edit(avatar=image_data)
                         avatar_set = True
                         scope = "guild"
-                        logger.info(f"✅ Set guild-specific avatar for {message.guild.name}")
+                        logger.info(
+                            f"✅ Set guild-specific avatar for {message.guild.name}"
+                        )
                     else:
                         raise Exception("Guild avatar setting not supported for bots")
                 except Exception as e:
-                    logger.warning(f"⚠️ Guild avatar failed: {e}, falling back to global")
-                    additional_message = f"Guild avatar failed ({str(e)}), set globally instead"
+                    logger.warning(
+                        f"⚠️ Guild avatar failed: {e}, falling back to global"
+                    )
+                    additional_message = (
+                        f"Guild avatar failed ({str(e)}), set globally instead"
+                    )
                     # Fall through to global setting
 
             if not avatar_set:
@@ -627,7 +641,7 @@ async def generate_and_set_avatar(
                 success=False,
                 error=f"Avatar generation succeeded but setting failed: {str(avatar_error)}",
                 image_url=image_url,
-                avatar_set=False
+                avatar_set=False,
             )
 
         return AvatarUpdateResponse(
@@ -635,12 +649,251 @@ async def generate_and_set_avatar(
             image_url=image_url,
             avatar_set=avatar_set,
             scope=scope,
-            message=additional_message or f"Avatar successfully set ({scope})"
+            message=additional_message or f"Avatar successfully set ({scope})",
         )
 
     except Exception as e:
         logger.error(f"❌ Failed to generate and set avatar: {e}")
         return AvatarUpdateResponse(success=False, error=str(e))
+
+
+@tool
+async def analyze_message_image(
+    config: RunnableConfig, image_index: int = 0
+) -> ImageAnalysisResponse:
+    """Analyzes an image from the current Discord message using OpenAI's vision capabilities.
+
+    Downloads and analyzes images attached to or embedded in Discord messages,
+    providing detailed descriptions, object identification, and text extraction (OCR).
+
+    Examples: Understanding memes, reading screenshots, analyzing photos, describing
+    diagrams, extracting text from images, identifying objects or people.
+
+    Args:
+        config: Runtime configuration containing Discord client context.
+        image_index: Index of the image to analyze if multiple images (default 0 for first image).
+
+    Returns:
+        Structured response containing image analysis, description, and extracted information.
+    """
+    logger.info(f"🖼️ Calling analyze_message_image", extra={"image_index": image_index})
+
+    try:
+        if not config or "configurable" not in config:
+            raise ValueError("No configuration available")
+
+        message = config["configurable"].get("discord_message")
+        if not message:
+            raise ValueError("No Discord message available")
+
+        # Find images in the message (attachments + embeds)
+        image_urls = []
+
+        # Check attachments for images
+        for attachment in message.attachments:
+            if any(
+                attachment.filename.lower().endswith(ext)
+                for ext in [".png", ".jpg", ".jpeg", ".gif", ".webp"]
+            ):
+                image_urls.append(attachment.url)
+
+        # Check embeds for images
+        for embed in message.embeds:
+            if embed.image:
+                image_urls.append(embed.image.url)
+            if embed.thumbnail:
+                image_urls.append(embed.thumbnail.url)
+
+        if not image_urls:
+            return ImageAnalysisResponse(
+                success=False, error="No images found in the message"
+            )
+
+        if image_index >= len(image_urls):
+            return ImageAnalysisResponse(
+                success=False,
+                error=f"Image index {image_index} out of range (found {len(image_urls)} images)",
+            )
+
+        image_url = image_urls[image_index]
+        logger.info(f"🖼️ Analyzing image: {image_url}")
+
+        # Use OpenAI vision via OpenRouter
+        from ..config import settings
+
+        if not settings.openrouter.api_key:
+            return ImageAnalysisResponse(
+                success=False,
+                error="OpenRouter API key not configured for image analysis",
+                image_url=image_url,
+            )
+
+        # Define structured response model inline
+        class VisionAnalysis(BaseModel):
+            """Structured vision analysis response from LLM."""
+
+            description: str = Field(
+                description="Detailed description of what is seen in the image"
+            )
+            objects: List[str] = Field(
+                description="List of objects, people, or items identified"
+            )
+            text: str = Field(
+                default="", description="Any visible text found in the image (OCR)"
+            )
+            image_type: str = Field(
+                description="Type of image (photo, screenshot, diagram, meme, etc.)"
+            )
+            confidence: str = Field(
+                description="Confidence level in the analysis (high/medium/low)"
+            )
+
+        # Use structured output with Pydantic model
+        structured_llm = ChatOpenAI(
+            api_key=settings.openrouter.api_key.get_secret_value(),
+            base_url=settings.openrouter.base_url,
+            model=settings.vision_llm.model,
+            temperature=settings.vision_llm.temperature,
+        ).with_structured_output(VisionAnalysis)
+
+        # Create vision analysis prompt
+        prompt_text = dedent(
+            """
+            Please analyze this image and provide:
+            1. A detailed description of what you see
+            2. List any objects, people, or items you can identify
+            3. Extract any visible text (OCR) - leave empty if no text found
+            4. Identify the type of image (photo, screenshot, diagram, meme, etc.)
+            5. Rate your confidence in this analysis (high/medium/low)
+        """
+        ).strip()
+
+        message_content = [
+            {"type": "text", "text": prompt_text},
+            {"type": "image_url", "image_url": {"url": image_url}},
+        ]
+
+        # Get structured response directly
+        analysis: VisionAnalysis = await structured_llm.ainvoke(
+            [HumanMessage(content=message_content)]
+        )
+
+        logger.info(f"✅ Image analyzed successfully: {analysis.description[:50]}...")
+
+        return ImageAnalysisResponse(
+            success=True,
+            image_url=image_url,
+            description=analysis.description,
+            objects=analysis.objects,
+            text_content=analysis.text if analysis.text else None,
+            image_type=analysis.image_type,
+            confidence=analysis.confidence,
+        )
+
+    except Exception as e:
+        logger.error(f"❌ Failed to analyze image: {e}")
+        return ImageAnalysisResponse(
+            success=False,
+            error=str(e),
+            image_url=image_url if "image_url" in locals() else None,
+        )
+
+
+@tool
+async def list_channels(config: RunnableConfig) -> ChannelListResponse:
+    """Lists all channels in the Discord server with descriptions and metadata.
+
+    Provides comprehensive channel information including names, types, descriptions,
+    categories, and ready-to-use mention formats. When referring to channels in your
+    response, ALWAYS use the provided 'mention' field (e.g. <#123456789>) rather than
+    just the channel name, as this creates proper clickable channel links in Discord.
+
+    Examples: Discovering available channels, finding channels by type, understanding
+    server organization, getting channel mentions, checking channel descriptions.
+
+    Args:
+        config: Runtime configuration containing Discord client context.
+
+    Returns:
+        Structured response containing channel data organized by type and category.
+    """
+    logger.info("📋 Calling list_channels")
+
+    try:
+        if not config or "configurable" not in config:
+            raise ValueError("No configuration available")
+
+        message = config["configurable"].get("discord_message")
+        if not message or not message.guild:
+            raise ValueError("No guild available - command must be used in a server")
+
+        guild = message.guild
+
+        # Get all channels in the guild
+        channels = []
+        channel_counts = {}
+
+        for channel in guild.channels:
+            # Get channel type as string
+            channel_type = str(channel.type).replace("ChannelType.", "")
+
+            # Count channels by type
+            channel_counts[channel_type] = channel_counts.get(channel_type, 0) + 1
+
+            # Get category name if channel belongs to one
+            category_name = (
+                channel.category.name
+                if hasattr(channel, "category") and channel.category
+                else None
+            )
+
+            # Get description/topic (text channels have topic, others might have different descriptions)
+            description = None
+            if hasattr(channel, "topic") and channel.topic:
+                description = channel.topic
+            elif hasattr(channel, "description") and channel.description:
+                description = channel.description
+
+            # Create mention format for appropriate channel types
+            mention = (
+                f"<#{channel.id}>"
+                if channel_type in ["text", "voice", "stage_voice", "forum"]
+                else f"#{channel.name}"
+            )
+
+            # Check if channel is NSFW (only applicable to certain channel types)
+            is_nsfw = getattr(channel, "nsfw", False)
+
+            channels.append(
+                ChannelData(
+                    name=channel.name,
+                    id=str(channel.id),
+                    type=channel_type,
+                    description=description,
+                    mention=mention,
+                    category=category_name,
+                    position=channel.position,
+                    nsfw=is_nsfw,
+                )
+            )
+
+        # Sort channels by category and position
+        channels.sort(key=lambda c: (c.category or "", c.position))
+
+        logger.info(
+            f"✅ Found {len(channels)} channels across {len(channel_counts)} types"
+        )
+
+        return ChannelListResponse(
+            success=True,
+            channels=channels,
+            total=len(channels),
+            by_type=channel_counts,
+        )
+
+    except Exception as e:
+        logger.error(f"❌ Failed to list channels: {e}")
+        return ChannelListResponse(success=False, error=str(e))
 
 
 # Register all tools with the global registry
@@ -653,3 +906,5 @@ register_tool(list_stickers)
 register_tool(send_sticker)
 register_tool(get_user_profile)
 register_tool(generate_and_set_avatar)
+register_tool(analyze_message_image)
+register_tool(list_channels)
