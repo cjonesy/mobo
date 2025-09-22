@@ -11,18 +11,18 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-# Copy UV configuration files first for better layer caching
-COPY pyproject.toml .
-
-# Install dependencies using UV
-RUN uv pip install --system --no-cache .
-
-# Copy the application code
+# Copy the source code and build files
 COPY . .
+
+# Install the package with all dependencies using UV
+RUN uv pip install --system --no-cache .
 
 # Create a non-root user and switch to it
 RUN useradd -m botuser
 USER botuser
 
-# Command to run the bot
-CMD ["python", "-m", "mobo.main"]
+# Set UV to not use virtual environments since we installed system-wide
+ENV UV_SYSTEM_PYTHON=1
+
+# Command to run the bot using the installed entry point
+CMD ["mobo-run"]

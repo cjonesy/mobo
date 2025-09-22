@@ -272,7 +272,7 @@ async def list_chat_users(config: RunnableConfig) -> UserListResponse:
           - display_name (str): Server-specific display name
           - global_name (str): Global display name (or null)
           - nickname (str): Server-specific nickname (or null)
-          - mention (str): Mention format (@user)
+          - mention (str): Ready-to-use Discord mention format (e.g., "<@123456789>")
           - status (str): Online status (online/idle/dnd/offline/unknown)
         - bots (array): Array of bot users in the channel with same structure as users
         - total (int): Total number of users and bots
@@ -474,7 +474,7 @@ async def get_user_profile(config: RunnableConfig, user: str) -> UserProfileResp
           - id (str): Discord user ID
           - display_name (str): Server-specific display name
           - global_name (str): Global display name (or null)
-          - mention (str): Mention format (@user)
+          - mention (str): Ready-to-use Discord mention format (e.g., "<@123456789>")
           - nickname (str): Server-specific nickname (or null)
           - bot (bool): True if user is a bot
           - joined_at (str): When user joined this server (ISO format)

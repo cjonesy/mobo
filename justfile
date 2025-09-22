@@ -114,6 +114,17 @@ build:
     @echo "🐳 Building Docker image..."
     docker-compose build
 
+# Build and push dev image to ghcr.io/cjonesy/mobo:dev
+build-dev:
+    @echo "🔐 Logging into GitHub Container Registry..."
+    @echo "💡 Make sure you have a GitHub Personal Access Token set as GITHUB_TOKEN"
+    @echo $GITHUB_TOKEN | docker login ghcr.io -u cjonesy --password-stdin
+    @echo "🐳 Building dev Docker image for linux/amd64..."
+    docker buildx build --platform linux/amd64 -t ghcr.io/cjonesy/mobo:dev .
+    @echo "📤 Pushing dev image to GitHub Container Registry..."
+    docker push ghcr.io/cjonesy/mobo:dev
+    @echo "✅ Dev image pushed to ghcr.io/cjonesy/mobo:dev"
+
 # Start full services with docker-compose (bot + postgres)
 up:
     @echo "🚀 Starting all services with Docker..."

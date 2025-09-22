@@ -173,12 +173,10 @@ class MessageProcessor:
                     bot_user_id=str(message.author.id),
                     channel_id=str(message.channel.id),
                     cooldown_seconds=settings.bot_interaction.bot_response_cooldown_seconds,
+                    max_bot_responses=settings.bot_interaction.max_bot_responses,
                 )
 
-                if (
-                    not can_respond
-                    or current_count >= settings.bot_interaction.max_bot_responses
-                ):
+                if not can_respond:
                     return (
                         False,
                         f"Bot interaction limit reached ({current_count}/{settings.bot_interaction.max_bot_responses}) - {status_reason}",

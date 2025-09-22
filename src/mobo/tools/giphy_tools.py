@@ -22,6 +22,8 @@ async def search_gif(query: str, limit: int = 1) -> Tuple[str, Dict]:
 
     Finds animated GIFs from Giphy's database based on search terms,
     returning both content and artifact data for display in Discord.
+    The GIF will be automatically uploaded and displayed - do NOT try to
+    create manual links or use Discord markdown syntax with the URL.
 
     Examples: Adding humor to conversations, expressing emotions with animation,
     reacting to funny moments, celebrating events, showing enthusiasm.
@@ -31,7 +33,7 @@ async def search_gif(query: str, limit: int = 1) -> Tuple[str, Dict]:
         limit: Maximum number of results (default 1)
 
     Returns:
-        Tuple of (content_text, gif_artifact)
+        Tuple of (content_text, gif_artifact) - GIF uploads automatically
     """
     logger.info("⚒️ Calling search_gif", extra={"query": query, "limit": limit})
     try:

@@ -32,9 +32,9 @@ class RateLimit(Base, TimestampMixin):
     # Resource identification
     resource_name = Column(String, nullable=False, index=True)  # e.g., 'google-search'
     period_start = Column(
-        DateTime, nullable=False, index=True
+        DateTime(timezone=True), nullable=False, index=True
     )  # Start of current period
-    period_end = Column(DateTime, nullable=False, index=True)  # End of current period
+    period_end = Column(DateTime(timezone=True), nullable=False, index=True)  # End of current period
 
     # Usage tracking
     current_usage = Column(Integer, nullable=False, default=0)

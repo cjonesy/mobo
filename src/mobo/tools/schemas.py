@@ -46,7 +46,7 @@ class UserData(BaseModel):
     display_name: str = Field(description="Server-specific display name")
     global_name: Optional[str] = Field(description="Global display name")
     nickname: Optional[str] = Field(description="Server-specific nickname")
-    mention: str = Field(description="Mention format (@user)")
+    mention: str = Field(description="Ready-to-use Discord mention format (e.g., '<@123456789>')")
     status: str = Field(description="Online status (online/idle/dnd/offline/unknown)")
 
 
@@ -67,7 +67,7 @@ class UserProfile(BaseModel):
     id: str = Field(description="Discord user ID")
     display_name: str = Field(description="Server-specific display name")
     global_name: Optional[str] = Field(description="Global display name")
-    mention: str = Field(description="Mention format (@user)")
+    mention: str = Field(description="Ready-to-use Discord mention format (e.g., '<@123456789>')")
     nickname: Optional[str] = Field(description="Server-specific nickname")
     bot: bool = Field(description="True if user is a bot")
     joined_at: str = Field(description="When user joined this server (ISO format)")
@@ -75,7 +75,7 @@ class UserProfile(BaseModel):
     roles: List[str] = Field(description="Array of role names the user has")
     status: str = Field(description="Online status (online/idle/dnd/offline)")
     avatar_url: str = Field(description="URL to user's avatar image")
-    activity: str = Field(description="Current activity")
+    activity: Optional[str] = Field(description="Current activity")
 
 
 class UserProfileResponse(ToolResponse):

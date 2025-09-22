@@ -90,14 +90,20 @@ async def message_generator_node(
 
         current_messages = state.get("messages", [])
 
-        # Separate tool results from conversation messages
+        # Simple approach: exclude tool-related messages from conversation history
+        # The message generator gets tool results via tool_context_parts
         for msg in current_messages:
             if hasattr(msg, "type"):
                 if msg.type == "tool":
                     # Extract tool results for context
                     tool_context_parts.append(f"Tool result: {msg.content}")
-                elif msg.type in ["human", "ai", "assistant"]:
+                elif msg.type == "human":
+                    # Only include human messages to avoid any tool call issues
                     conversation_history.append(msg)
+                elif msg.type in ["ai", "assistant"]:
+                    # Skip ALL assistant messages to avoid tool call complications
+                    # The bot gets context from RAG conversation_context instead
+                    logger.debug(f"Skipping assistant message to avoid tool call issues")
 
         # Create enhanced system prompt template that includes tool results as a variable
         enhanced_system_prompt_template = (
@@ -148,6 +154,14 @@ async def message_generator_node(
         conversation_context = format_conversation_context(
             state.get("conversation_context", [])
         )
+
+        # Debug: Log conversation history to identify malformed messages
+        logger.info(f"🔍 Conversation history contains {len(conversation_history)} messages")
+        for i, msg in enumerate(conversation_history):
+            msg_type = getattr(msg, 'type', 'unknown')
+            tool_calls_raw = getattr(msg, 'tool_calls', None)
+            has_tool_call_id = hasattr(msg, 'tool_call_id') and msg.tool_call_id
+            logger.info(f"  [{i}] Type: {msg_type}, tool_calls: {tool_calls_raw}, Has tool_call_id: {has_tool_call_id}")
 
         # Create the chain and invoke with structured data
         chain = prompt_template | llm

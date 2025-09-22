@@ -367,7 +367,7 @@ class BotInteractionSettings(BaseSettings):
         description="Maximum number of responses to other bots before stopping (0 = unlimited)",
     )
     bot_response_cooldown_seconds: int = Field(
-        default=60,
+        default=600,
         ge=0,
         le=3600,
         description="Seconds to wait after hitting bot response limit before responding again (0 = no cooldown)",

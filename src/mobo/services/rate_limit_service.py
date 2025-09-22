@@ -138,7 +138,7 @@ class RateLimitService:
             Number of expired limits cleaned up
         """
         if before_time is None:
-            before_time = datetime.now(UTC).replace(tzinfo=None)
+            before_time = datetime.now(UTC)
 
         return await self.repository.delete_expired_before(
             session=session,
@@ -159,16 +159,16 @@ class RateLimitService:
 
     def time_until_reset(self, rate_limit: RateLimit) -> timedelta:
         """Get time until this rate limit period resets."""
-        # Convert to timezone-naive for consistent comparison
-        now = datetime.now(UTC).replace(tzinfo=None)
+        # Use consistent UTC timezone-aware datetimes
+        now = datetime.now(UTC)
         period_end = (
             rate_limit.period_end
             if isinstance(rate_limit.period_end, datetime)
             else datetime.fromisoformat(str(rate_limit.period_end))
         )
-        # Ensure period_end is also timezone-naive
-        if period_end.tzinfo is not None:
-            period_end = period_end.replace(tzinfo=None)
+        # Ensure period_end is timezone-aware UTC
+        if period_end.tzinfo is None:
+            period_end = period_end.replace(tzinfo=UTC)
 
         if now >= period_end:
             return timedelta(0)
@@ -210,6 +210,5 @@ class RateLimitService:
         else:
             raise ValueError(f"Invalid period type: {period_type}")
 
-        # Convert to timezone-naive for database compatibility
-        # (PostgreSQL TIMESTAMP WITHOUT TIME ZONE columns)
-        return start.replace(tzinfo=None), end.replace(tzinfo=None)
+        # Return timezone-aware UTC datetimes for consistency
+        return start, end
