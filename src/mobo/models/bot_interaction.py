@@ -37,7 +37,7 @@ class BotInteraction(Base, TimestampMixin):
     # Interaction tracking
     interaction_count = Column(Integer, nullable=False, default=0)
     last_interaction = Column(
-        DateTime, nullable=False, default=lambda: datetime.now(UTC)
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     is_currently_active = Column(Boolean, nullable=False, default=True)
 

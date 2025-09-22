@@ -15,7 +15,7 @@ class RateLimitExceeded(Exception):
         self.limit = limit
         self.reset_time = reset_time
 
-        now = datetime.now(UTC) if reset_time.tzinfo else datetime.now()
+        now = datetime.now(UTC)
         reset_delta = reset_time - now
         reset_seconds = max(0, int(reset_delta.total_seconds()))
 

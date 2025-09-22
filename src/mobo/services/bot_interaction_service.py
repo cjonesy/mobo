@@ -90,7 +90,7 @@ class BotInteractionService:
         bot_user_id: str,
         channel_id: str,
         cooldown_seconds: int = 60,
-        max_interactions_per_hour: int = 10,
+        max_bot_responses: int = 5,
     ) -> Tuple[bool, int, str]:
         """
         Determine if we should respond to another bot based on anti-loop protection rules.
@@ -99,8 +99,8 @@ class BotInteractionService:
             session: Database session
             bot_user_id: Discord user ID of the bot
             channel_id: Discord channel ID
-            cooldown_seconds: Minimum seconds between interactions
-            max_interactions_per_hour: Maximum interactions per hour with this bot
+            cooldown_seconds: Seconds to wait after hitting response limit before responding again (0 = no cooldown)
+            max_bot_responses: Maximum consecutive responses before stopping (0 = unlimited)
 
         Returns:
             Tuple of (should_respond, current_count, reason)
@@ -120,40 +120,34 @@ class BotInteractionService:
             if not interaction:
                 return True, 0, "No previous interactions"
 
-            # Check if enough time has passed since last interaction for cooldown reset
-            if cooldown_seconds > 0:
-                time_since_last = (
-                    datetime.now(UTC) - interaction.last_interaction
-                ).total_seconds()
+            # Check if we've exceeded the maximum consecutive responses
+            if max_bot_responses > 0 and interaction.interaction_count >= max_bot_responses:
+                # We've hit the limit - check if cooldown has expired
+                if cooldown_seconds > 0:
+                    time_since_last = (
+                        datetime.now(UTC) - interaction.last_interaction
+                    ).total_seconds()
 
-                if time_since_last >= cooldown_seconds:
-                    # Reset the interaction count after cooldown
-                    interaction.interaction_count = 0
-                    interaction.is_currently_active = True
-                    await session.commit()
-                    logger.info(
-                        f"🔄 Bot interaction cooldown expired for {bot_user_id} in {channel_id}"
-                    )
-                    return True, 0, "Cooldown expired, interactions reset"
+                    if time_since_last >= cooldown_seconds:
+                        # Cooldown expired - reset the interaction count
+                        interaction.interaction_count = 0
+                        interaction.is_currently_active = True
+                        await session.commit()
+                        logger.info(
+                            f"🔄 Bot interaction cooldown expired for {bot_user_id} in {channel_id}, resetting count"
+                        )
+                        return True, 0, "Cooldown expired after hitting limit, interactions reset"
 
-            # Check if we've exceeded the hourly interaction limit
-            if max_interactions_per_hour > 0:
-                # Count interactions in the past hour
-                one_hour_ago = datetime.now(UTC) - timedelta(hours=1)
-
-                if (
-                    interaction.last_interaction >= one_hour_ago
-                    and interaction.interaction_count >= max_interactions_per_hour
-                ):
-                    logger.info(
-                        f"🚫 Bot interaction limit reached for {bot_user_id} in {channel_id}: "
-                        f"{interaction.interaction_count}/{max_interactions_per_hour} per hour"
-                    )
-                    return (
-                        False,
-                        int(interaction.interaction_count),
-                        f"Hourly limit exceeded ({interaction.interaction_count}/{max_interactions_per_hour})",
-                    )
+                # Still in cooldown or no cooldown configured but limit reached
+                logger.info(
+                    f"🚫 Bot interaction limit reached for {bot_user_id} in {channel_id}: "
+                    f"{interaction.interaction_count}/{max_bot_responses} consecutive responses"
+                )
+                return (
+                    False,
+                    int(interaction.interaction_count),
+                    f"Max consecutive responses exceeded ({interaction.interaction_count}/{max_bot_responses})",
+                )
 
             return True, int(interaction.interaction_count), "Within limits"
 

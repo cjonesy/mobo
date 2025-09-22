@@ -35,6 +35,7 @@ dependencies = [
 [project.scripts]
 mobo-run = "mobo.main:run_bot"
 mobo-dev = "mobo.main:run_dev"
+mobo-init-db = "mobo.main:init_db"
 
 [tool.uv]
 dev-dependencies = [

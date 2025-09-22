@@ -35,7 +35,7 @@ class User(Base, TimestampMixin):
     response_tone = Column(
         String, nullable=False, default="neutral"
     )  # How bot should respond: friendly, neutral, hostile, etc.
-    last_seen = Column(DateTime, nullable=True)
+    last_seen = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     likes = relationship(

@@ -141,8 +141,20 @@ def init_db():
         logger = logging.getLogger(__name__)
 
         try:
-            logger.info("🗄️ Initializing LangGraph database schema...")
+            logger.info("🗄️ Initializing database schema...")
 
+            # Import all models so they get registered with SQLAlchemy metadata
+            from mobo.db import get_engine, Base
+            import mobo.models  # This imports all the model classes
+
+            # Create all application tables first
+            logger.info("🏗️ Creating application tables...")
+            async with get_engine().begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            logger.info("✅ Application tables created")
+
+            # Initialize LangGraph components
+            logger.info("🚀 Initializing LangGraph components...")
             async with AsyncPostgresSaver.from_conn_string(
                 settings.database.url_for_langgraph
             ) as checkpointer:
@@ -155,7 +167,7 @@ def init_db():
                 store.setup()
                 logger.info("✅ PostgresStore schema initialized")
 
-            logger.info("✅ LangGraph database initialized successfully!")
+            logger.info("✅ Database initialization completed successfully!")
 
         except Exception as e:
             logger.error(f"❌ Database initialization failed: {e}")
